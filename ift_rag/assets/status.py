@@ -31,8 +31,14 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
     selenium.scroll_down()
     context.log.info(f"Requested all blogs")
 
+    # The heading article
+    xpath = "//*[contains(concat(' ', normalize-space(@class), ' '), ' mb-[44px] ') and contains(concat(' ', normalize-space(@class), ' '), ' 2xl:mb-12 ')]"
+    element = selenium.driver.find_element(By.XPATH, xpath)
+
+    # Remainign articles
     xpath = '//div[@class="grid auto-rows-[1fr] grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-5"]'
     links = selenium.driver.find_element(By.XPATH, xpath).find_elements(By.TAG_NAME, "a")
+    links = [element] + links
 
     context.log.info(f"Found {len(links)} blogs")
     
@@ -102,6 +108,3 @@ def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame) 
         data.append(row)
 
     return data
-
-
-    
