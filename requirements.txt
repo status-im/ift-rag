@@ -1,0 +1,6 @@
+dagster
+dagster-webserver
+beautifulsoup4
+selenium
+pandas
+requests
