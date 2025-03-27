@@ -15,9 +15,6 @@ module_asset_checks = load_asset_checks_from_modules([
     # put asset check modules here
 ])
 
-# What does asterisk * mean in Python? 
-# https://stackoverflow.com/questions/400739/what-does-asterisk-mean-in-python
-
 defs = Definitions(
     assets = [*module_assets],
     jobs = [

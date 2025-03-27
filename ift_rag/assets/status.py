@@ -13,7 +13,12 @@ from bs4 import BeautifulSoup
     },
     kinds=["Selenium", "Python"],
     group_name="Status_Extraction",
-    owners=["team: Nikolay Ninov"]
+    owners=["team:Nikolay"],
+    description="Extract the Status Blog URLs.",
+    tags={
+        "blog": "",
+        "scrape": ""
+    }
 )
 def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) -> dg.Output:
     
@@ -73,7 +78,12 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
 @dg.asset(
     kinds=["BeautifulSoup", "Python"],
     group_name="Status_Extraction",
-    owners=["team: Nikolay Ninov"],
+    owners=["team:Nikolay"],
+    description="Extract the HTML text of the Staus Blog pages.",
+    tags={
+        "blog": "",
+        "scrape": ""
+    },
     ins={
         "info": dg.AssetIn("status_app_blog_urls")
     }
@@ -88,7 +98,7 @@ def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame) 
 
         html = BeautifulSoup(response.text, "html.parser")
 
-        row["html_text"] = str(html.find("div", class_="root-content container-blog py-6"))
+        row["html_text"] = html.find("div", class_="root-content container-blog py-6").text
         data.append(row)
 
     return data
