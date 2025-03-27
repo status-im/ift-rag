@@ -17,7 +17,8 @@ from bs4 import BeautifulSoup
     description="Extract the Status Blog URLs.",
     tags={
         "blog": "",
-        "scrape": ""
+        "scrape": "",
+        "portfolio": "Status"
     }
 )
 def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) -> dg.Output:
@@ -52,7 +53,7 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         lambda_document = {
             "tag": lambda: blog_card.find("span", class_="flex-1 whitespace-nowrap").text,
             "title": lambda: blog_card.find("span", class_="font-sans text-19 font-semibold").text,
-            "date": lambda: datetime.datetime.strptime(blog_card.find("span", class_="font-sans text-15 font-regular text-neutral-50 undefined").text, "on %b %d, %Y"),
+            "ref_date": lambda: datetime.datetime.strptime(blog_card.find("span", class_="font-sans text-15 font-regular text-neutral-50 undefined").text, "on %b %d, %Y"),
             "url": lambda: url,
             "author": lambda: blog_card.find("span", class_="font-sans text-15 font-semibold").text
         }
@@ -72,8 +73,8 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
 
     metadata = {
         "blogs": len(posts),
-        "start_date": posts["date"].min().strftime("%Y-%m-%d"),
-        "end_date": posts["date"].max().strftime("%Y-%m-%d"),
+        "start_date": posts["ref_date"].min().strftime("%Y-%m-%d"),
+        "end_date": posts["ref_date"].max().strftime("%Y-%m-%d"),
         "preview": dg.MarkdownMetadataValue(posts.head().to_markdown(index=False))
     }
 
@@ -88,7 +89,8 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
     description="Extract the HTML text of the Staus Blog pages.",
     tags={
         "blog": "",
-        "scrape": ""
+        "scrape": "",
+        "portfolio": "Status"
     },
     ins={
         "info": dg.AssetIn("status_app_blog_urls")
