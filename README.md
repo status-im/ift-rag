@@ -1,8 +1,6 @@
 # Dagster IFT RAG 📄
 
-<p align="center">
-  <img width = "1000" height = "350" src = "https://dagster.io/images/brand/logos/dagster-primary-horizontal.jpg">
-</p>
+This repository is used to extract all of the necessary IFT data for the [Logos RAG](https://github.com/logos-co/logos-rag) such as project blogs and [Notion documentation](https://www.notion.com/).
 
 ## Structure 👷
 
@@ -37,5 +35,6 @@ dagster project scaffold --name your_name_here
 To see the all dagster commands [click here](https://docs.dagster.io/_apidocs/cli).
 
 ```bash
+pip install -r requirements.txt
 dagster dev
 ```
