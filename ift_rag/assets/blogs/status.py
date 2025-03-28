@@ -3,8 +3,8 @@ import pandas as pd
 import datetime
 import requests
 from selenium.webdriver.common.by import By
-from ..resources import Selenium
-from .. import constants
+from ...resources import Selenium
+from ... import constants
 from bs4 import BeautifulSoup
 
 @dg.asset(
@@ -106,7 +106,7 @@ def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame) 
 
         html = BeautifulSoup(response.text, "html.parser")
 
-        row["html_text"] = html.find("div", class_="root-content container-blog py-6").text
+        row["text"] = html.find("div", class_="root-content container-blog py-6").text
         data.append(row)
 
     return data
