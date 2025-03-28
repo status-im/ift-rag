@@ -1,5 +1,5 @@
-dagster
-dagster-webserver
+dagster==1.9.6
+dagster-webserver==1.9.6
 beautifulsoup4
 selenium
 pandas
