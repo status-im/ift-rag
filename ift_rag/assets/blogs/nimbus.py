@@ -1,7 +1,6 @@
 import dagster as dg
 import pandas as pd
 import datetime
-import time
 import requests
 from selenium.webdriver.common.by import By
 from ...resources import Selenium

@@ -1,11 +1,13 @@
 import dagster as dg
 import time
+import os
+import pickle
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from typing import Optional
+from typing import Optional, Any
 
 class Selenium(dg.ConfigurableResource):
 
@@ -69,3 +71,26 @@ class Selenium(dg.ConfigurableResource):
 
     def get_xpath(self, tag_name: str, attribute_name: str, values: str) -> str:
         return f"//{tag_name}[" + " and ".join([f"contains(@{attribute_name}, '{name}')" for name in values.split(" ")]) + "]"
+    
+
+
+class DeltaLake(dg.ConfigurableResource):
+
+    path: str
+
+    def upload(self, file_name: str, data: Any):
+
+        file_path = os.path.join(self.path, file_name)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+
+        with open(file_path, "wb") as file:
+            pickle.dump(data, file)
+
+
+    def load(self, file_path: str) -> Any:
+
+        with open(file_path, 'rb') as file:
+            data = pickle.load(file)
+
+        return data

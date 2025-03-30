@@ -2,8 +2,9 @@ import dagster as dg
 import pandas as pd
 import datetime
 import requests
+import os
 from selenium.webdriver.common.by import By
-from ...resources import Selenium
+from ...resources import Selenium, DeltaLake
 from ... import constants
 from bs4 import BeautifulSoup
 
@@ -78,7 +79,7 @@ def make_blog_text(project_name: str):
         },
         name=f"{project_name.lower()}_blog_text"
     )
-    def asset_template(context: dg.AssetExecutionContext, info: pd.DataFrame) -> dg.Output:
+    def asset_template(context: dg.AssetExecutionContext, info: pd.DataFrame, delta_lake: DeltaLake) -> dg.Output:
         
         data = []
         for row in info.to_dict(orient="records"):
@@ -89,6 +90,15 @@ def make_blog_text(project_name: str):
             html = BeautifulSoup(response.text, "html.parser")
 
             row["text"] = html.find("section", class_="gh-content gh-canvas").text
+            
+            file_name = str(row["title"]).lower()
+
+            for old, new in constants.SYMBOL_MAPPING.items():
+                file_name = file_name.replace(old, new)
+            
+            file_name += ".pkl"
+            delta_lake.upload(file_name, row)
+
             data.append(row)
 
         data = pd.DataFrame(data)

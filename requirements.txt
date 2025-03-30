@@ -4,3 +4,7 @@ beautifulsoup4
 selenium
 pandas
 requests
+llama-index
+# llama-index-embeddings-huggingface
+# langchain
+semantic-text-splitter
