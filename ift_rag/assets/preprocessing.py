@@ -1,14 +1,13 @@
 import dagster as dg
 import pandas as pd
-import datetime
 from ..configs import ChunkingConfig
-from ..resources import DeltaLake
+from ..resources import MinioResource
 from semantic_text_splitter import TextSplitter
 from tokenizers import Tokenizer
 from llama_index.core import Document
 
 @dg.asset(
-    kinds=["Python", "HuggingFace", "LlamaIndex"], # 🦙 is not allowed :/
+    kinds=["LlamaIndex", "HuggingFace", "Minio"], # 🦙 is not allowed :/
     owners=["team:Nikolay"],
     group_name="Data_Retreiver",
     description="Convert the text data into text chunks (🦙 Documents) that will be stored in the vector store. To chunk the data we use semantic chunking where a pre-trained tokenizer determines the chunk size.",
@@ -16,9 +15,13 @@ from llama_index.core import Document
         "tokenizers": "https://huggingface.co/transformers/v3.3.1/pretrained_models.html",
         "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
         "semantic_chunking": "https://github.com/FullStackRetrieval-com/RetrievalTutorials/blob/main/tutorials/LevelsOfTextSplitting/5_Levels_Of_Text_Splitting.ipynb"
-    }
+    },
+    deps = [
+        "codex_blog_text", "nomos_blog_text", "waku_blog_text",
+        "nimbus_blog_text"
+    ]
 )
-def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig, delta_lake: DeltaLake) -> dg.Output:
+def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig, minio: MinioResource) -> dg.Output:
 
     tokenizer = Tokenizer.from_pretrained(config.model_name)
     context.log.info(f"Loaded Pre Trained tokenizer - {config.model_name}")
@@ -29,13 +32,15 @@ def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig
     chunkated_data = []
     for file_path in config.file_paths:
 
-        data: dict = delta_lake.load(file_path)
+        data: dict = minio.load(file_path)
         context.log.info(f"Loaded {file_path}")
 
         text: str = data.pop("text")
                 
         chunkated_data += [
             Document(text=chunk, metadata={
+                "bucket": minio.bucket_name,
+                "location": f"archive/{file_path}",
                 "model_name": config.model_name,
                 "min_tokens": config.min_tokens,
                 "max_tokens": config.max_tokens,
@@ -45,10 +50,31 @@ def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig
         ]
     
     metadata = {
+        "bucket": minio.bucket_name,
+        "files": len(config.file_paths),
         "chunks": len(chunkated_data),
         "model_name": config.model_name,
         "min_size": str(config.min_tokens),
         "max_size": str(config.max_tokens)
     }
     
-    return dg.Output(chunkated_data, metadata=metadata)
+    output = (chunkated_data, config.file_paths)
+    return dg.Output(output, metadata=metadata)
+
+
+
+
+@dg.asset(
+    kinds=["Minio"],
+    owners=["team:Nikolay"],
+    group_name="Data_Retreiver",
+    description="Archive the chunkated files.",
+)
+def processed_rag_files(context: dg.AssetExecutionContext, custom_data_chunks: tuple[list[Document], list[str]], minio: MinioResource) -> dg.MaterializeResult:
+
+    _, file_paths = custom_data_chunks
+
+    context.log.info(f"{len(file_paths)} files to archive")
+
+    for source_path in file_paths:
+        minio.move(source_path, f"archive/{source_path}")

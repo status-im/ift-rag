@@ -8,3 +8,7 @@ class ChunkingConfig(dg.Config):
     model_name: str = Field(default="bert-base-uncased", description="The tokenizer's name as it is in Hugging Face")
     min_tokens: int = Field(default=1000, description="The minimum capacity of tokens in each chunk.")
     max_tokens: int = Field(default=1000, description="The maximum capacity of tokens in each chunk.")
+
+
+class EmbeddingConfig(dg.Config):
+    model_name: str = Field(description="The embedding model name as it is in Hugging Face")

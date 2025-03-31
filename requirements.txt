@@ -5,6 +5,6 @@ selenium
 pandas
 requests
 llama-index
-# llama-index-embeddings-huggingface
-# langchain
+llama-index-embeddings-huggingface
 semantic-text-splitter
+minio

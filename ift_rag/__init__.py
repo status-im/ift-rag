@@ -33,6 +33,6 @@ defs = Definitions(
     asset_checks = [*module_asset_checks],
     resources={
         "selenium": resources.Selenium(),
-        "delta_lake": resources.DeltaLake(path=EnvVar("PATH"))
+        "minio": resources.MinioResource(access_key=EnvVar("ACCESS_KEY"), secret_key=EnvVar("SECRET_KEY"), bucket_name="rag")
     }
 )

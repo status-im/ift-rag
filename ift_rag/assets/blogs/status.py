@@ -3,9 +3,11 @@ import pandas as pd
 import datetime
 import requests
 from selenium.webdriver.common.by import By
-from ...resources import Selenium
+from ...resources import Selenium, MinioResource
 from ... import constants
 from bs4 import BeautifulSoup
+from llama_index.core.node_parser import HTMLNodeParser
+from llama_index.core import Document
 
 @dg.asset(
     metadata={
@@ -83,7 +85,7 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
 
 
 @dg.asset(
-    kinds=["BeautifulSoup", "Python"],
+    kinds=["BeautifulSoup", "Python", "Minio"],
     group_name="Status_Extraction",
     owners=["team:Nikolay"],
     description="Extract the HTML text of the Staus Blog pages.",
@@ -96,9 +98,8 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         "info": dg.AssetIn("status_app_blog_urls")
     }
 )
-def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame) -> list[dict]:
+def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> list[dict]:
     
-    data = []
     for row in info.to_dict(orient="records"):
         
         response = requests.get(row["url"])
@@ -106,7 +107,17 @@ def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame) 
 
         html = BeautifulSoup(response.text, "html.parser")
 
-        row["text"] = html.find("div", class_="root-content container-blog py-6").text
-        data.append(row)
+        row["text"] = "".join([
+            text_node.text.replace("\n", " ").strip() 
+            for text_node in HTMLNodeParser().get_nodes_from_documents([Document(text=str(html).strip())]) 
+            if text_node.metadata["tag"] == "p"
+        ])
 
-    return data
+        file_name = str(row["title"]).lower() + ".pkl"
+        minio.upload(row, f"html/status/app/{file_name}")
+
+    metadata = {
+        "bucket": minio.bucket_name,
+        "uploaded": len(info)
+    }
+    return dg.MaterializeResult(metadata=metadata)

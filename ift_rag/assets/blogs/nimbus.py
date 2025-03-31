@@ -3,9 +3,11 @@ import pandas as pd
 import datetime
 import requests
 from selenium.webdriver.common.by import By
-from ...resources import Selenium
+from ...resources import Selenium, MinioResource
 from ... import constants
 from bs4 import BeautifulSoup
+from llama_index.core import Document
+from llama_index.core.node_parser import HTMLNodeParser
 
 @dg.asset(
     metadata={
@@ -111,7 +113,7 @@ def nimbus_blog_urls(context: dg.AssetExecutionContext, info: pd.DataFrame, sele
 
 
 @dg.asset(
-    kinds=["BeautifulSoup", "Python"],
+    kinds=["BeautifulSoup", "Python", "Minio"],
     group_name="Nimbus_Extraction",
     owners=["team:Nikolay"],
     description="Extract the Nimbus Blog text for every topic.",
@@ -124,22 +126,27 @@ def nimbus_blog_urls(context: dg.AssetExecutionContext, info: pd.DataFrame, sele
         "info": dg.AssetIn("nimbus_blog_urls")
     }
 )
-def nimbus_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame) -> dg.Output:
+def nimbus_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.Output:
 
-    data = []
     for row in info.to_dict("records"):
         
         response = requests.get(row["url"])
         context.log.info(f"Fetched data for {row['url']}")
         
         html = BeautifulSoup(response.text, "html.parser")
-        row["text"] = html.find("div", class_="gh-content gh-canvas").text
-        data.append(row)
 
-    data = pd.DataFrame(data)
+        html_text = "".join(list(map(str, html.find("div", class_="gh-content gh-canvas").children))).strip()
+        row["text"] = " ".join([
+            text_node.text.replace("\n", " ").strip()
+            for text_node in HTMLNodeParser().get_nodes_from_documents([Document(text=html_text)]) 
+            if not str(text_node.metadata["tag"]).startswith("h")
+        ])
+        
+        file_name = str(row["title"]).lower() + ".pkl"
+        minio.upload(row, f"html/nimbus/{file_name}")
     
     metadata = {
-        "preview": dg.MarkdownMetadataValue(data.assign(text = data["text"].apply(lambda text: text[:200])).head(5).to_markdown(index=False)),
-        "articles": len(data)
+        "bucket": minio.bucket_name,
+        "articles": len(info)
     }
-    return dg.Output(data, metadata=metadata)
+    return dg.MaterializeResult(metadata=metadata)

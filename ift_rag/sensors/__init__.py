@@ -1,15 +1,15 @@
 import dagster as dg
 import datetime
 from .. import jobs
-from ..resources import DeltaLake
+from ..resources import MinioResource
 from pathlib import Path
 
 @dg.sensor(
     job=jobs.text_preprocessing_job
 )
-def text_preprocessing_sensor(delta_lake: DeltaLake):
+def text_preprocessing_sensor(minio: MinioResource):
 
-    file_paths = [str(path) for path in Path(delta_lake.path).glob("*.pkl")]
+    file_paths = [minio_object.object_name for minio_object in minio.client.list_objects("rag", recursive=True, prefix="html")]
 
     params = {
         "run_key": str(int(datetime.datetime.now().timestamp())),
@@ -24,6 +24,6 @@ def text_preprocessing_sensor(delta_lake: DeltaLake):
         }
     }
     if not file_paths:
-        return dg.SkipReason(f"No files to process in {delta_lake.path}")
+        return dg.SkipReason(f"No files to process in {minio.bucket_name}/html")
     
     return dg.RunRequest(**params)

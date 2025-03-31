@@ -4,10 +4,11 @@ import datetime
 import requests
 import os
 from selenium.webdriver.common.by import By
-from ...resources import Selenium, DeltaLake
+from ...resources import Selenium, MinioResource
 from ... import constants
 from bs4 import BeautifulSoup
-
+from llama_index.core import Document
+from llama_index.core.node_parser import HTMLNodeParser
 
 
 def make_blog_urls(project_name: str):
@@ -65,10 +66,13 @@ def make_blog_urls(project_name: str):
 def make_blog_text(project_name: str):
 
     @dg.asset(
-        kinds=["BeautifulSoup", "Python"],
+        kinds=["BeautifulSoup", "Python", "Minio"],
         group_name=f"{project_name.title()}_Extraction",
         owners=["team:Nikolay"],
         description=f"Extract the HTML text of the {project_name.title()} Blog pages.",
+        metadata={
+            "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
+        },
         tags={
             "blog": "",
             "scrape": "",
@@ -79,35 +83,29 @@ def make_blog_text(project_name: str):
         },
         name=f"{project_name.lower()}_blog_text"
     )
-    def asset_template(context: dg.AssetExecutionContext, info: pd.DataFrame, delta_lake: DeltaLake) -> dg.Output:
+    def asset_template(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
         
-        data = []
         for row in info.to_dict(orient="records"):
             
             response = requests.get(row["url"])
             context.log.info(f"Fetched data for {row['url']}")
 
             html = BeautifulSoup(response.text, "html.parser")
-
-            row["text"] = html.find("section", class_="gh-content gh-canvas").text
+            html_text = "".join(list(map(str, html.find("section", class_="gh-content gh-canvas").children))).strip()
             
-            file_name = str(row["title"]).lower()
+            row["text"] = " ".join([
+                text_node.text.replace("\n", " ").strip()
+                for text_node in HTMLNodeParser().get_nodes_from_documents([Document(text=html_text)]) 
+                if not str(text_node.metadata["tag"]).startswith("h")
+            ])
 
-            for old, new in constants.SYMBOL_MAPPING.items():
-                file_name = file_name.replace(old, new)
-            
-            file_name += ".pkl"
-            delta_lake.upload(file_name, row)
-
-            data.append(row)
-
-        data = pd.DataFrame(data)
+            file_name = str(row["title"]).lower() + ".pkl"
+            minio.upload(row, f"html/{project_name.lower()}/{file_name}")
 
         metadata = {
-            "preview": dg.MarkdownMetadataValue(data.assign(text = data["text"].apply(lambda text: text[:200])).head(5).to_markdown(index=False)),
-            "articles": len(data)
+            "bucket": minio.bucket_name,
+            "uploaded": len(info)
         }
-        return dg.Output(data, metadata=metadata)
+        return dg.MaterializeResult(metadata=metadata)
     
-
     return asset_template
