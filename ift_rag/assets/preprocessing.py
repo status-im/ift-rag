@@ -1,10 +1,11 @@
 import dagster as dg
 import pandas as pd
-from ..configs import ChunkingConfig
+from ..configs import ChunkingConfig, EmbeddingConfig
 from ..resources import MinioResource
 from semantic_text_splitter import TextSplitter
 from tokenizers import Tokenizer
 from llama_index.core import Document
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 @dg.asset(
     kinds=["LlamaIndex", "HuggingFace", "Minio"], # 🦙 is not allowed :/
@@ -18,7 +19,7 @@ from llama_index.core import Document
     },
     deps = [
         "codex_blog_text", "nomos_blog_text", "waku_blog_text",
-        "nimbus_blog_text"
+        "nimbus_blog_text", "status_app_blog_text"
     ]
 )
 def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig, minio: MinioResource) -> dg.Output:
@@ -41,7 +42,9 @@ def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig
             Document(text=chunk, metadata={
                 "bucket": minio.bucket_name,
                 "location": f"archive/{file_path}",
-                "model_name": config.model_name,
+                "models": {
+                    "chunks": config.model_name,
+                },
                 "min_tokens": config.min_tokens,
                 "max_tokens": config.max_tokens,
                 **data
@@ -63,12 +66,12 @@ def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig
 
 
 
-
 @dg.asset(
     kinds=["Minio"],
     owners=["team:Nikolay"],
     group_name="Data_Retreiver",
     description="Archive the chunkated files.",
+    deps=["data_chunk_embeddings"]
 )
 def processed_rag_files(context: dg.AssetExecutionContext, custom_data_chunks: tuple[list[Document], list[str]], minio: MinioResource) -> dg.MaterializeResult:
 
@@ -78,3 +81,34 @@ def processed_rag_files(context: dg.AssetExecutionContext, custom_data_chunks: t
 
     for source_path in file_paths:
         minio.move(source_path, f"archive/{source_path}")
+
+
+
+@dg.asset(
+    kinds=["LlamaIndex", "HuggingFace"], # 🦙 is not allowed :/
+    owners=["team:Nikolay"],
+    group_name="Data_Retreiver",
+    description="Convert the chunkated 🦙 Documents into embeddings that will be stored in the vector store.",
+    metadata={
+        "embeddings": "https://huggingface.co/models?library=sentence-transformers"
+    }
+)
+def data_chunk_embeddings(context: dg.AssetExecutionContext, custom_data_chunks: tuple[list[Document], list[str]], config: EmbeddingConfig) -> dg.Output:
+
+    documents, _ = custom_data_chunks
+
+    embed_model = HuggingFaceEmbedding(model_name=config.model_name)
+
+    updated_documents = []
+    for document in documents:
+
+        document.embedding = embed_model.get_text_embedding(document.text)
+        document.metadata["models"]["embedding"] = config.model_name
+        updated_documents.append(document)
+
+    metadata = {
+        "model_name": config.model_name,
+        "documents": len(updated_documents),
+    }
+
+    return dg.Output(documents, metadata=metadata)

@@ -10,5 +10,6 @@ class ChunkingConfig(dg.Config):
     max_tokens: int = Field(default=1000, description="The maximum capacity of tokens in each chunk.")
 
 
+
 class EmbeddingConfig(dg.Config):
-    model_name: str = Field(description="The embedding model name as it is in Hugging Face")
+    model_name: str = Field(default="nomic-ai/nomic-embed-text-v1.5", description="The embedding model name as it is in Hugging Face")
