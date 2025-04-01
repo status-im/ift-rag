@@ -1,0 +1,10 @@
+dagster==1.9.6
+dagster-webserver==1.9.6
+beautifulsoup4
+selenium
+pandas
+requests
+llama-index
+llama-index-embeddings-huggingface
+semantic-text-splitter
+minio
