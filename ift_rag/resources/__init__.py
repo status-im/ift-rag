@@ -1,6 +1,7 @@
 import dagster as dg
 import time
 import os
+import shutil
 import re
 import platform
 import pickle
@@ -76,7 +77,7 @@ class Selenium(dg.ConfigurableResource):
 
     def get_xpath(self, tag_name: str, attribute_name: str, values: str) -> str:
         return f"//{tag_name}[" + " and ".join([f"contains(@{attribute_name}, '{name}')" for name in values.split(" ")]) + "]"
-    
+
 
 
 class MinioResource(dg.ConfigurableResource):
@@ -89,28 +90,33 @@ class MinioResource(dg.ConfigurableResource):
 
     __client: Optional[Minio] = None
     __symbol_mappings: dict[str, str] = {
-        " ": "_",
+        "\n": "_",
+        "\t": "_",
+        "|": "_",
+        "/": "_",
+        "#": "",
+        "\\": "_",
         "-": "_",
-        "(": "",
-        ")": "",
+        "(": "_",
+        ")": "_",
         "'": "",
         ".": "",
         "!": "",
         "?": "",
         "'": "",
-        ",": " ",
-        ":": "",
         "\"": "",
+        ",": "_",
+        ":": "",
         "£": "GBP",
         "$": "USD",
         "%": "PCT",
         "^": "",
         "&": "AND",
         "*": "",
-        "-": "_",
         "+": "",
-        "-": "",
-        "=": ""
+        "-": "_",
+        "=": "",
+        " ": "_",
     }
 
     @property
@@ -134,15 +140,19 @@ class MinioResource(dg.ConfigurableResource):
         """
 
         file_name = os.path.basename(file_path).lower()
+        file_name = ".".join(file_name.split(".")[:-1])
+        processed_file_name = file_name
 
         for old, new in self.__symbol_mappings.items():
-            file_name = file_name.replace(old, new)
+            processed_file_name = processed_file_name.replace(old, new)
 
-        file_name = re.sub(r'_+', '_', file_name)
+        processed_file_name = re.sub(r'_+', '_', processed_file_name)
+        file_path = file_path.replace(file_name, processed_file_name)
+
         local_file_path = os.path.join(
             os.path.dirname(__file__), 
             str(datetime.datetime.now().timestamp()).replace(".", ""), 
-            file_name
+            processed_file_name
         )
         os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
 
@@ -155,7 +165,7 @@ class MinioResource(dg.ConfigurableResource):
         self.client.fput_object(self.bucket_name, file_path, local_file_path)
         
         os.remove(local_file_path)
-        os.rmdir(os.path.dirname(local_file_path))
+        shutil.rmtree(os.path.dirname(local_file_path))
 
 
 

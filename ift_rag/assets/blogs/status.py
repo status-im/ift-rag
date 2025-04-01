@@ -34,19 +34,27 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
     selenium.scroll_down()
     context.log.info(f"Requested all blogs")
 
+    to_datetime = lambda text: datetime.datetime.strptime(text, "on %b %d, %Y")
+
     # The heading article
     xpath = "//*[contains(concat(' ', normalize-space(@class), ' '), ' mb-[44px] ') and contains(concat(' ', normalize-space(@class), ' '), ' 2xl:mb-12 ')]"
     element = selenium.driver.find_element(By.XPATH, xpath)
+    html = BeautifulSoup(element.get_attribute("innerHTML"), "html.parser")
 
-    # Remainign articles
+    posts = [{
+        "tag": html.find("span", class_="flex-1 whitespace-nowrap").text,
+        "title": html.find("span", class_="text-27 font-semibold xl:text-40 xl:font-bold").text,
+        "ref_date": to_datetime(html.find("span", class_="font-sans text-15 font-regular text-neutral-50 undefined").text),
+        "url": element.find_element(By.TAG_NAME, "a").get_attribute("href"),
+        "author": html.find("span", class_="font-sans text-15 font-semibold").text
+    }]
+    
+    # Remaining articles
     xpath = '//div[@class="grid auto-rows-[1fr] grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-5"]'
     links = selenium.driver.find_element(By.XPATH, xpath).find_elements(By.TAG_NAME, "a")
-    links = [element] + links
 
     context.log.info(f"Found {len(links)} blogs")
     
-    posts = []
-
     for blog_card in links:
     
         url = blog_card.get_attribute("href")
@@ -55,21 +63,21 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         lambda_document = {
             "tag": lambda: blog_card.find("span", class_="flex-1 whitespace-nowrap").text,
             "title": lambda: blog_card.find("span", class_="font-sans text-19 font-semibold").text,
-            "ref_date": lambda: datetime.datetime.strptime(blog_card.find("span", class_="font-sans text-15 font-regular text-neutral-50 undefined").text, "on %b %d, %Y"),
+            "ref_date": lambda: to_datetime(blog_card.find("span", class_="font-sans text-15 font-regular text-neutral-50 undefined").text),
             "url": lambda: url,
             "author": lambda: blog_card.find("span", class_="font-sans text-15 font-semibold").text
         }
         
-        document = {}
+        row = {}
         for key, func in lambda_document.items():
             
             try:
-                document[key] = func()
+                row[key] = func()
             except:
-                document[key] = None
+                row[key] = None
 
-        posts.append(document)
-    
+        posts.append(row)
+            
     posts = pd.DataFrame(posts)
     selenium.driver.quit()
 
@@ -98,7 +106,7 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         "info": dg.AssetIn("status_app_blog_urls")
     }
 )
-def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> list[dict]:
+def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
     
     for row in info.to_dict(orient="records"):
         
@@ -113,8 +121,8 @@ def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, 
             if text_node.metadata["tag"] == "p"
         ])
 
-        file_name = str(row["title"]).lower() + ".pkl"
-        minio.upload(row, f"html/status/app/{file_name}")
+        file_name = row["url"].split("/")[-1] + ".pkl"
+        minio.upload(row, f"html/status/{file_name}")
 
     metadata = {
         "bucket": minio.bucket_name,
