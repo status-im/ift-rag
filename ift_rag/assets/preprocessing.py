@@ -1,5 +1,4 @@
 import dagster as dg
-import pandas as pd
 from ..configs import ChunkingConfig, EmbeddingConfig
 from ..resources import MinioResource
 from semantic_text_splitter import TextSplitter
