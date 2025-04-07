@@ -113,7 +113,7 @@ def nimbus_blog_urls(context: dg.AssetExecutionContext, info: pd.DataFrame, sele
 
 
 @dg.asset(
-    kinds=["BeautifulSoup", "Python", "Minio"],
+    kinds=["LlamaIndex", "Python", "Minio"], # 🦙 is not allowed :/
     group_name="Nimbus_Extraction",
     owners=["team:Nikolay"],
     description="Extract the Nimbus Blog text for every topic.",
@@ -122,31 +122,47 @@ def nimbus_blog_urls(context: dg.AssetExecutionContext, info: pd.DataFrame, sele
         "scrape": "",
         "portfolio": "Nimbus"
     },
+    metadata={
+        "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
+    },
     ins={
         "info": dg.AssetIn("nimbus_blog_urls")
     }
 )
-def nimbus_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.Output:
+def nimbus_blog_documents(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.Output:
+
+    total_chunks = 0
 
     for row in info.to_dict("records"):
         
         response = requests.get(row["url"])
-        context.log.info(f"Fetched data for {row['url']}")
+        context.log.debug(f"Fetched data for {row['url']}")
         
         html = BeautifulSoup(response.text, "html.parser")
 
         html_text = "".join(list(map(str, html.find("div", class_="gh-content gh-canvas").children))).strip()
-        row["text"] = " ".join([
-            text_node.text.replace("\n", " ").strip()
-            for text_node in HTMLNodeParser().get_nodes_from_documents([Document(text=html_text)]) 
-            if not str(text_node.metadata["tag"]).startswith("h")
-        ])
         
+        parser = HTMLNodeParser()
+            
+        chunks_metadata = {
+            **row,
+            "project": "nimbus",
+            "parser": parser.class_name()
+        }
+        page_chunks = [
+            text_node
+            for text_node in parser.get_nodes_from_documents([Document(text=html_text, metadata=chunks_metadata)]) 
+            if not str(text_node.metadata["tag"]).startswith("h")
+        ]
+
         file_name = str(row["title"]).lower() + ".pkl"
-        minio.upload(row, f"html/nimbus/{file_name}")
+        minio.upload(page_chunks, f"documents/html/nimbus/{file_name}")
+        context.log.info(f"There are {len(page_chunks)} Documents for url {row['url']}")
+        total_chunks += len(page_chunks)
     
     metadata = {
         "bucket": minio.bucket_name,
-        "articles": len(info)
+        "pages": len(info),
+        "total_chunks": total_chunks
     }
     return dg.MaterializeResult(metadata=metadata)

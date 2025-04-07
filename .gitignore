@@ -179,3 +179,5 @@ cython_debug/
 *.parquet
 *.csv
 *.xlsx
+*.ps1
+qdrant_storage/

@@ -2,6 +2,9 @@ import dagster as dg
 from ..resources import Notion, MinioResource
 from ..configs import NotionBlocksConfig
 from ..utils import notion_parser
+from llama_index.core import Document
+from llama_index.core.llms import MockLLM
+from llama_index.core.node_parser import MarkdownElementNodeParser
 import pandas as pd
 import os
 
@@ -82,19 +85,24 @@ def notion_page_json(context: dg.AssetExecutionContext, notion_page_data: dict[s
 
 
 @dg.asset(
-    kinds=["Python", "Minio"],
+    kinds=["Python", "Minio", "LlamaIndex"], # 🦙 is not allowed :/
     owners=["team:Nikolay"],
     group_name="Notion_Extraction",
-    description="Convert the Notion page text to Markdown.",
-    deps=["notion_page_json"]
+    description="Convert the Notion page text to Markdown and split it into chunks (🦙 Documents) that will be stored in the vector store",
+    deps=["notion_page_json"],
+    metadata={
+        "minio_folder": "documents/notion/markdown/",
+        "🦙Index": "https://github.com/run-llama/llama_index/discussions/13412"
+    }
 )
-def notion_markdown_data(context: dg.AssetExecutionContext, config: NotionBlocksConfig, minio: MinioResource) -> dg.Output:
+def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionBlocksConfig, minio: MinioResource) -> dg.MaterializeResult:
     
-    markdowns = {}
+    minio_folder = "documents/notion/markdown/"
+
     for file_path in config.file_paths:
         
         file_name = os.path.basename(file_path)
-        block_id = ".".join(file_name.split(".")[:-1]).replace("_", "-")
+        page_id = ".".join(file_name.split(".")[:-1]).replace("_", "-")
 
         markdown = []
         data: list[dict] = minio.load(file_path)
@@ -105,17 +113,34 @@ def notion_markdown_data(context: dg.AssetExecutionContext, config: NotionBlocks
                 continue
 
             block = notion_parser.get_notion_block(document, document["type"])
-
             markdown.append(block.markdown_text)
 
             if len(block.children) != 0 and not isinstance(block, notion_parser.Table):
                 markdown.append(notion_parser.get_child_markdown(block, ""))
 
+        # https://github.com/run-llama/llama_index/issues/16707
+        parser = MarkdownElementNodeParser(llm=MockLLM())
 
-        markdowns[block_id] = "".join(markdown)
+        archive_path = "archive/" + file_path
+        params = {
+            "text": "".join(markdown),
+            "metadata": {
+                "path": archive_path,
+                "page_id": page_id,
+                "parser": parser.class_name(),
+            }
+        }
+        
+        page_chunks = parser.get_nodes_from_documents([Document(**params)])
+        minio.upload(page_chunks, f"{minio_folder}{page_id}.pkl")
+        context.log.info(f"There are {len(page_chunks)} Documents for page {page_id}")
+
+        minio.move(file_path, archive_path)
+        context.log.info(f"Moved file {os.path.basename(file_path)} from {os.path.dirname(file_path)} to {os.path.dirname(archive_path)}")
 
     metadata = {
+        "bucket": minio.bucket_name,
         "files": len(config.file_paths)
     }
 
-    return dg.Output(markdowns, metadata=metadata)
+    return dg.MaterializeResult(metadata=metadata)

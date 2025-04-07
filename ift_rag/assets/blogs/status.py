@@ -93,7 +93,7 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
 
 
 @dg.asset(
-    kinds=["BeautifulSoup", "Python", "Minio"],
+    kinds=["LlamaIndex", "Python", "Minio"], # 🦙 is not allowed :/
     group_name="Status_Extraction",
     owners=["team:Nikolay"],
     description="Extract the HTML text of the Staus Blog pages.",
@@ -102,30 +102,46 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         "scrape": "",
         "portfolio": "Status"
     },
+    metadata={
+        "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
+    },
     ins={
         "info": dg.AssetIn("status_app_blog_urls")
     }
 )
-def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
+def status_app_blog_documents(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
     
+    total_chunks = 0
+
     for row in info.to_dict(orient="records"):
         
         response = requests.get(row["url"])
-        context.log.info(f"Fetched data for {row['url']}")
+        context.log.debug(f"Fetched data for {row['url']}")
 
         html = BeautifulSoup(response.text, "html.parser")
 
-        row["text"] = "".join([
-            text_node.text.replace("\n", " ").strip() 
-            for text_node in HTMLNodeParser().get_nodes_from_documents([Document(text=str(html).strip())]) 
-            if text_node.metadata["tag"] == "p"
-        ])
+        parser = HTMLNodeParser()
+        chunks_metadata = {
+            **row,
+            "project": "status", 
+            "parser": parser.class_name()
+        }
+
+        page_chunks = [
+            text_node
+            for text_node in parser.get_nodes_from_documents([Document(text=str(html).strip(), metadata=chunks_metadata)]) 
+            if not str(text_node.metadata["tag"]).startswith("h")
+        ]
 
         file_name = row["url"].split("/")[-1] + ".pkl"
-        minio.upload(row, f"html/status/{file_name}")
+
+        minio.upload(page_chunks, f"documents/html/status/{file_name}")
+        context.log.info(f"There are {len(page_chunks)} Documents for url {row['url']}")
+        total_chunks += len(page_chunks)
 
     metadata = {
         "bucket": minio.bucket_name,
-        "uploaded": len(info)
+        "pages": len(info),
+        "total_chunks": total_chunks
     }
     return dg.MaterializeResult(metadata=metadata)

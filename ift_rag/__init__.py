@@ -22,11 +22,11 @@ defs = Definitions(
         blogs.common.make_blog_text("waku"), blogs.common.make_blog_text("codex"), blogs.common.make_blog_text("nomos"),
     ],
     jobs = [
-        jobs.logos_projects_upload_job, jobs.text_preprocessing_job,
+        jobs.logos_projects_upload_job, jobs.documents_preprocessing_job,
         jobs.notion_json_upload_job, jobs.notion_markdown_creation_job
     ],
     sensors = [
-        sensors.text_preprocessing_sensor, sensors.notion_markdown_sensor
+        sensors.notion_markdown_sensor, sensors.documents_preprocessing_sensor
     ],
     schedules = [
         # Insert schedules here. Example schedules.your_schedule_name
