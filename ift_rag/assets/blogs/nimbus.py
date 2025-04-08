@@ -147,6 +147,7 @@ def nimbus_blog_documents(context: dg.AssetExecutionContext, info: pd.DataFrame,
         chunks_metadata = {
             **row,
             "project": "nimbus",
+            "source": "blog",
             "parser": parser.class_name()
         }
         page_chunks = [

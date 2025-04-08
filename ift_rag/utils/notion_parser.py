@@ -148,7 +148,7 @@ def get_notion_block(document: dict, text_type: str, indents: int = 0) -> Union[
         - `indents` - how many `\t` to put in front of the markdown
 
     Output:
-        - the correct Block type class for the given JSON resu.t
+        - the correct Block type class for the given JSON result
     """
     if text_type.startswith("heading"):
         return Header(document, indents)

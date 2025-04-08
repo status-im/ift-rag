@@ -128,6 +128,7 @@ def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionB
                 "path": archive_path,
                 "page_id": page_id,
                 "parser": parser.class_name(),
+                "source": "notion"
             }
         }
         

@@ -8,3 +8,4 @@ llama-index
 llama-index-embeddings-huggingface
 minio
 einops
+qdrant-client

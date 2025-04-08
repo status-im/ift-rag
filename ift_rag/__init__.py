@@ -48,6 +48,7 @@ defs = Definitions(
         ),
         "notion": resources.Notion(
             api_key=EnvVar("NOTION_SECRET_KEY")
-        )
+        ),
+        "qdrant": resources.Qdrant()
     }
 )

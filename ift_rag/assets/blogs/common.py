@@ -100,7 +100,8 @@ def make_blog_text(project_name: str):
             chunks_metadata = {
                 **row,
                 "project": project_name.lower(), 
-                "parser": parser.class_name()
+                "parser": parser.class_name(),
+                "source": "blog"
             }
             page_chunks = [
                 text_node

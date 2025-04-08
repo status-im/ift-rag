@@ -123,7 +123,8 @@ def status_app_blog_documents(context: dg.AssetExecutionContext, info: pd.DataFr
         parser = HTMLNodeParser()
         chunks_metadata = {
             **row,
-            "project": "status", 
+            "project": "status",
+            "source": "blog",
             "parser": parser.class_name()
         }
 
