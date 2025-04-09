@@ -91,13 +91,13 @@ def notion_page_json(context: dg.AssetExecutionContext, notion_page_data: dict[s
     description="Convert the Notion page text to Markdown and split it into chunks (🦙 Documents) that will be stored in the vector store",
     deps=["notion_page_json"],
     metadata={
-        "minio_folder": "documents/notion/markdown/",
+        "minio_folder": "documents/markdown/notion/",
         "🦙Index": "https://github.com/run-llama/llama_index/discussions/13412"
     }
 )
 def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionBlocksConfig, minio: MinioResource) -> dg.MaterializeResult:
     
-    minio_folder = "documents/notion/markdown/"
+    minio_folder = "documents/markdown/notion/"
 
     for file_path in config.file_paths:
         
@@ -127,15 +127,12 @@ def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionB
             "metadata": {
                 "path": archive_path,
                 "page_id": page_id,
-                "parser": parser.class_name(),
                 "source": "notion"
             }
         }
-        
-        page_chunks = parser.get_nodes_from_documents([Document(**params)])
-        minio.upload(page_chunks, f"{minio_folder}{page_id}.pkl")
-        context.log.info(f"There are {len(page_chunks)} Documents for page {page_id}")
 
+        document = Document(**params)
+        minio.upload(document, f"{minio_folder}{page_id}.pkl")
         minio.move(file_path, archive_path)
         context.log.info(f"Moved file {os.path.basename(file_path)} from {os.path.dirname(file_path)} to {os.path.dirname(archive_path)}")
 

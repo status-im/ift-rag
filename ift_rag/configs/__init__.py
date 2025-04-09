@@ -10,3 +10,8 @@ class EmbeddingConfig(dg.Config):
 class NotionBlocksConfig(dg.Config):
     file_paths: list[str] = Field(description="The files that will be converted into markdown")
     skip_block_types: list[str] = Field(default=["image", "child_page"], description="The Notion block types that will be skipped when extracting the Markdown")
+
+
+
+class FileProcessingConfig(dg.Config):
+    file_paths: list[str] = Field(description="The files that will be processed by the asset")

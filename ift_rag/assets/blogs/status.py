@@ -109,40 +109,30 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         "info": dg.AssetIn("status_app_blog_urls")
     }
 )
-def status_app_blog_documents(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
+def status_app_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
     
-    total_chunks = 0
-
     for row in info.to_dict(orient="records"):
         
+        url: str = row["url"]
         response = requests.get(row["url"])
         context.log.debug(f"Fetched data for {row['url']}")
 
         html = BeautifulSoup(response.text, "html.parser")
+        html_text = str(html.find("div", class_="root-content container-blog py-6"))
 
-        parser = HTMLNodeParser()
         chunks_metadata = {
             **row,
             "project": "status",
-            "source": "blog",
-            "parser": parser.class_name()
+            "source": "blog"
         }
+        
+        document = Document(text=html_text, metadata=chunks_metadata)
 
-        page_chunks = [
-            text_node
-            for text_node in parser.get_nodes_from_documents([Document(text=str(html).strip(), metadata=chunks_metadata)]) 
-            if not str(text_node.metadata["tag"]).startswith("h")
-        ]
-
-        file_name = row["url"].split("/")[-1] + ".pkl"
-
-        minio.upload(page_chunks, f"documents/html/status/{file_name}")
-        context.log.info(f"There are {len(page_chunks)} Documents for url {row['url']}")
-        total_chunks += len(page_chunks)
+        file_name = ("_".join(url.split("/")[-2:]) + ".pkl").replace("_.", ".")
+        minio.upload(document, f"html/status/{file_name}")
 
     metadata = {
         "bucket": minio.bucket_name,
-        "pages": len(info),
-        "total_chunks": total_chunks
+        "documents": len(info),
     }
     return dg.MaterializeResult(metadata=metadata)

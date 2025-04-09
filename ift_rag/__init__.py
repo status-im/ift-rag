@@ -22,11 +22,15 @@ defs = Definitions(
         blogs.common.make_blog_text("waku"), blogs.common.make_blog_text("codex"), blogs.common.make_blog_text("nomos"),
     ],
     jobs = [
-        jobs.logos_projects_upload_job, jobs.documents_preprocessing_job,
-        jobs.notion_json_upload_job, jobs.notion_markdown_creation_job
+        jobs.logos_projects_upload_job, jobs.text_embedding_job,
+        jobs.notion_json_upload_job, jobs.notion_markdown_creation_job,
+        jobs.html_to_markdown_job, jobs.document_chunkation_job
     ],
     sensors = [
-        sensors.notion_markdown_sensor, sensors.documents_preprocessing_sensor
+        sensors.minio_file_sensor_factory("text_embeddings_sensor", "documents/chunks", "document_embeddings", jobs.text_embedding_job),
+        sensors.minio_file_sensor_factory("html_to_markdown_sensor", "html", "blog_documents", jobs.html_to_markdown_job),
+        sensors.minio_file_sensor_factory("document_chunks_sensor", "documents/markdown", "document_chunks", jobs.document_chunkation_job),
+        sensors.minio_file_sensor_factory("notion_markdown_sensor", "notion/json", "notion_markdown_documents", jobs.notion_markdown_creation_job),
     ],
     schedules = [
         # Insert schedules here. Example schedules.your_schedule_name
