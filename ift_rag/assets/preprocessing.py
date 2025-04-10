@@ -1,67 +1,285 @@
 import dagster as dg
 import pandas as pd
-from ..configs import ChunkingConfig, EmbeddingConfig
-from ..resources import MinioResource
-from semantic_text_splitter import TextSplitter
-from tokenizers import Tokenizer
-from llama_index.core import Document
+import pprint
+import os
+import datetime
+import copy
+from ..configs import EmbeddingConfig, FileProcessingConfig
+from ..resources import MinioResource, Qdrant
+from llama_index.core.schema import TextNode
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core import Document
+from llama_index.core.llms import MockLLM
+from llama_index.core.node_parser import MarkdownElementNodeParser
+from qdrant_client import models
+from html_to_markdown import convert_to_markdown
+
+
+
+@dg.asset(
+    kinds=["Minio"],
+    owners=["team:Nikolay"],
+    group_name="Data_Retreiver",
+    description="Convert the HTML blogs to Markdown.",
+    deps=[
+        "codex_blogs", "nomos_blogs", "waku_blogs",
+        "nimbus_blogs", "status_app_blogs"
+    ]
+)
+def blog_documents(config: FileProcessingConfig, minio: MinioResource) -> dg.MaterializeResult:
+    
+    for file_path in config.file_paths:
+        
+        document: Document = minio.load(file_path)
+
+        params = {
+            "source": document.text,
+            "heading_style": "atx",
+            "bullets": "-",
+            "strong_em_symbol": "*"
+        }
+
+        document = Document(text=convert_to_markdown(**params), metadata=document.metadata)
+        file_name = os.path.basename(file_path)
+        project = os.path.basename(os.path.dirname(file_path))
+
+        minio.upload(document, f"documents/markdown/blogs/{project}/{file_name}")
+        minio.move(file_path, f"archive/{file_path}")
+
+
+
+@dg.asset(
+    kinds=["Minio", "LlamaIndex"], # 🦙 is not allowed :/
+    owners=["team:Nikolay"],
+    group_name="Data_Retreiver",
+    description="Convert the Markdown 🦙 Documents into chunks.",
+    deps=["blog_documents", "notion_markdown_documents"]
+)
+def document_chunks(context: dg.AssetExecutionContext, config: FileProcessingConfig, minio: MinioResource) -> dg.MaterializeResult:
+    
+    # https://github.com/run-llama/llama_index/issues/16707
+    parser = MarkdownElementNodeParser(llm=MockLLM())
+
+    metadata = {
+        "chunks": 0,
+        "documents": len(config.file_paths),
+    }
+    for file_path in config.file_paths:
+        
+        document: Document = minio.load(file_path)
+
+        chunks = parser.get_nodes_from_documents([document])
+        
+        path_parts = ["documents", "chunks"]
+        source = document.metadata.get("source")
+        if source:
+            path_parts.append(source)
+
+        project = document.metadata.get("project")
+        if project:
+            path_parts.append(project)
+        
+        path_parts.append(os.path.basename(file_path))
+
+        context.log.info(f"Document {path_parts[-1]} has {len(chunks)} chunks")
+
+        minio.upload(chunks, "/".join(path_parts))
+        minio.move(file_path, f"archive/{file_path}")
+        metadata["chunks"] += len(chunks)
+
+    metadata = {key: str(value) for key, value in metadata.items()}
+    return dg.MaterializeResult(metadata=metadata)
+
+
 
 @dg.asset(
     kinds=["LlamaIndex", "HuggingFace", "Minio"], # 🦙 is not allowed :/
     owners=["team:Nikolay"],
     group_name="Data_Retreiver",
-    description="Convert the text data into text chunks (🦙 Documents) that will be stored in the vector store. To chunk the data we use semantic chunking where a pre-trained tokenizer determines the chunk size.",
+    description="Convert the chunkated 🦙 Documents into embeddings that will be stored in the vector store.",
     metadata={
-        "tokenizers": "https://huggingface.co/transformers/v3.3.1/pretrained_models.html",
-        "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
-        "semantic_chunking": "https://github.com/FullStackRetrieval-com/RetrievalTutorials/blob/main/tutorials/LevelsOfTextSplitting/5_Levels_Of_Text_Splitting.ipynb"
+        "embeddings": "https://huggingface.co/models?library=sentence-transformers"
     },
-    deps = [
-        "codex_blog_text", "nomos_blog_text", "waku_blog_text",
-        "nimbus_blog_text", "status_app_blog_text"
-    ]
+    deps=["document_chunks"]
 )
-def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig, minio: MinioResource) -> dg.Output:
-
-    tokenizer = Tokenizer.from_pretrained(config.model_name)
-    context.log.info(f"Loaded Pre Trained tokenizer - {config.model_name}")
-
-    splitter = TextSplitter.from_huggingface_tokenizer(tokenizer, (config.min_tokens, config.max_tokens))
-    context.log.info(f"Instantiated HuggingFace Tokenizer with token range {config.min_tokens}-{config.max_tokens}")
+def document_embeddings(context: dg.AssetExecutionContext, config: EmbeddingConfig, minio: MinioResource) -> dg.Output:
     
-    chunkated_data = []
+    embed_model = HuggingFaceEmbedding(
+        model_name=config.model_name, 
+        trust_remote_code=True
+    )
+    
+    context.log.info(f"Embedding model: {config.model_name}")
+
+    output = {
+        "file_paths": config.file_paths,
+        "qdrant_collection_name": config.model_name.replace("/", "-"),
+        "embedding_size": len(embed_model.get_text_embedding("Get the embedding size for Qdrant"))  
+    }
+
     for file_path in config.file_paths:
 
-        data: dict = minio.load(file_path)
-        context.log.info(f"Loaded {file_path}")
+        documents: list[TextNode] = minio.load(file_path)
+        total_chunks = len(documents)
 
-        text: str = data.pop("text")
-                
-        chunkated_data += [
-            Document(text=chunk, metadata={
-                "bucket": minio.bucket_name,
-                "location": f"archive/{file_path}",
-                "models": {
-                    "chunks": config.model_name,
-                },
-                "min_tokens": config.min_tokens,
-                "max_tokens": config.max_tokens,
-                **data
-            }) 
-            for chunk in splitter.chunks(text)
-        ]
+        embeded_documents = []
+        
+        for index, document in enumerate(documents):
+            
+            embedding_exists = document.metadata.get("model") == config.model_name and len(document.embedding) > 0
+            is_empty = document.text == "None"
+            if embedding_exists or is_empty:
+                continue
+
+            document.embedding = embed_model.get_text_embedding(document.text)
+            document.metadata["model"] = config.model_name
+            document.metadata["path"] = f"archive/{file_path}"
+            document.metadata["chunks"] = {
+                "index": index,
+                "total": total_chunks
+            }
+            document.metadata["upload_timestamp"] = datetime.datetime.now()
+            embeded_documents.append(document)
+
+        if not embeded_documents:
+            context.log.debug(f"Embeddings for {file_path} exist")
+            continue
+        
+        minio.upload(embeded_documents, file_path)
+        context.log.info(f"Added embeddings for {file_path}")
+
+    metadata = {
+        "model_name": config.model_name,
+        "device": embed_model._device,
+        "embedding_size": output["embedding_size"],
+        "bucket": minio.bucket_name,
+    }
+
+    return dg.Output(output, metadata=metadata)
+
+
+
+@dg.asset(
+    kinds=["Qdrant"],
+    owners=["team:Nikolay"],
+    group_name="Data_Retreiver",
+    description="Create a Qdrant collection for the embeddings.",
+    ins={
+        "info": dg.AssetIn("document_embeddings")
+    },
+    metadata={
+        "vector_search": "https://qdrant.tech/articles/vector-search-resource-optimization/"
+    }
+)
+def qdrant_collection(context: dg.AssetExecutionContext, info: dict, qdrant: Qdrant) -> dg.MaterializeResult:
+
+    collection_name = info["qdrant_collection_name"]
+    distance = models.Distance.COSINE
+
+    client = qdrant.client
+    context.log.info(collection_name)
+    exists = client.collection_exists(collection_name)
+
+    metadata = {
+        "collection": collection_name,
+        "created": str(not exists)
+    }
+
+    if exists:
+        context.log.info(f"{collection_name} already exists")
+        return dg.MaterializeResult(metadata=metadata)
+    
+    # https://qdrant.tech/documentation/guides/optimize/#3-high-precision-with-high-speed-search
+    params = {
+        "collection_name": collection_name,
+        "vectors_config": models.VectorParams(size=info["embedding_size"], distance=distance),
+        "quantization_config": models.ScalarQuantization(
+            scalar=models.ScalarQuantizationConfig(type=models.ScalarType.INT8, always_ram=True),
+        )
+    }
+
+    client.create_collection(**params)
+
+    pp = pprint.PrettyPrinter(indent=2, sort_dicts=False)
+    context.log.info(f"Collection parameters:\n{pp.pformat(params)}")
     
     metadata = {
-        "bucket": minio.bucket_name,
-        "files": len(config.file_paths),
-        "chunks": len(chunkated_data),
-        "model_name": config.model_name,
-        "min_size": str(config.min_tokens),
-        "max_size": str(config.max_tokens)
+        **metadata,
+        "vector_distance": distance.value,
+        "vector_size": str(info['embedding_size'])
     }
+    context.log.info(f"Created {collection_name}\nVector size: {info['embedding_size']}\nDistance: {distance.value}")
+    return dg.MaterializeResult(metadata=metadata)
+
+
+
+@dg.asset(
+    kinds=["Qdrant", "Minio"],
+    owners=["team:Nikolay"],
+    group_name="Data_Retreiver",
+    description="Upload the 🦙 Chunks to Qdrant.",
+    ins={
+        "info": dg.AssetIn("document_embeddings")
+    },
+    deps=["qdrant_collection"]
+)
+def qdrant_vectors(context: dg.AssetExecutionContext, info: dict, qdrant: Qdrant, minio: MinioResource) -> dg.Output:
+
+    metadata = {
+        "batch_size": str(qdrant.batch_size),
+        "batches": 1
+    }    
+    storage = []
+
+    collection_name = info["qdrant_collection_name"]
+    batch_size = qdrant.batch_size
+
+    output = copy.deepcopy(info)
+    output["file_paths"] = []
+
+    for file_path in info["file_paths"]:
+
+        text_nodes: list[TextNode] = minio.load(file_path)
+        context.log.debug(f"Loaded {file_path}")
+
+        points = [
+            models.PointStruct(
+                id=text_node.node_id, 
+                vector=text_node.embedding, 
+                payload={
+                    **text_node.metadata,
+                    "text": text_node.text
+                }
+            )
+            for text_node in text_nodes
+            if text_node.embedding
+        ]
+        context.log.debug(f"File contains {len(points)} Qdrant Points")
+        
+        if points:
+            output["file_paths"].append(file_path)
+
+        storage += points
+        if len(storage) < batch_size:
+            continue
+        
+        batch = storage[:batch_size]
+
+        qdrant.client.upsert(collection_name, batch)
+        context.log.info(f"Batch {metadata['batches']}: Uploaded {len(batch)} vectors to {collection_name}")
+        storage = storage[batch_size:]
+        metadata['batches'] += 1
+
+
+    if not storage:
+        metadata["batches"] = str(metadata["batches"])
+        return dg.Output(info, metadata=metadata)
     
-    output = (chunkated_data, config.file_paths)
+    qdrant.client.upsert(collection_name, storage)
+    metadata['batches'] += 1
+    context.log.info(f"Uploaded remaining {len(storage)} vectors to {collection_name}")
+    
+    metadata["batches"] = str(metadata["batches"])
     return dg.Output(output, metadata=metadata)
 
 
@@ -71,44 +289,14 @@ def custom_data_chunks(context: dg.AssetExecutionContext, config: ChunkingConfig
     owners=["team:Nikolay"],
     group_name="Data_Retreiver",
     description="Archive the chunkated files.",
-    deps=["data_chunk_embeddings"]
+    ins={
+        "info": dg.AssetIn("document_embeddings")
+    },
+    deps=["qdrant_vectors"]
 )
-def processed_rag_files(context: dg.AssetExecutionContext, custom_data_chunks: tuple[list[Document], list[str]], minio: MinioResource) -> dg.MaterializeResult:
+def processed_documents_files(context: dg.AssetExecutionContext, info: dict, minio: MinioResource) -> dg.MaterializeResult:
 
-    _, file_paths = custom_data_chunks
+    context.log.info(f"{len(info['file_paths'])} files to archive")
 
-    context.log.info(f"{len(file_paths)} files to archive")
-
-    for source_path in file_paths:
-        minio.move(source_path, f"archive/{source_path}")
-
-
-
-@dg.asset(
-    kinds=["LlamaIndex", "HuggingFace"], # 🦙 is not allowed :/
-    owners=["team:Nikolay"],
-    group_name="Data_Retreiver",
-    description="Convert the chunkated 🦙 Documents into embeddings that will be stored in the vector store.",
-    metadata={
-        "embeddings": "https://huggingface.co/models?library=sentence-transformers"
-    }
-)
-def data_chunk_embeddings(context: dg.AssetExecutionContext, custom_data_chunks: tuple[list[Document], list[str]], config: EmbeddingConfig) -> dg.Output:
-
-    documents, _ = custom_data_chunks
-
-    embed_model = HuggingFaceEmbedding(model_name=config.model_name)
-
-    updated_documents = []
-    for document in documents:
-
-        document.embedding = embed_model.get_text_embedding(document.text)
-        document.metadata["models"]["embedding"] = config.model_name
-        updated_documents.append(document)
-
-    metadata = {
-        "model_name": config.model_name,
-        "documents": len(updated_documents),
-    }
-
-    return dg.Output(documents, metadata=metadata)
+    for source_path in info['file_paths']:
+        minio.move(source_path, f"archive/{source_path}")    

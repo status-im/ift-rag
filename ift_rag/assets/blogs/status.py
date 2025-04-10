@@ -93,7 +93,7 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
 
 
 @dg.asset(
-    kinds=["BeautifulSoup", "Python", "Minio"],
+    kinds=["LlamaIndex", "Python", "Minio"], # 🦙 is not allowed :/
     group_name="Status_Extraction",
     owners=["team:Nikolay"],
     description="Extract the HTML text of the Staus Blog pages.",
@@ -102,30 +102,37 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         "scrape": "",
         "portfolio": "Status"
     },
+    metadata={
+        "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
+    },
     ins={
         "info": dg.AssetIn("status_app_blog_urls")
     }
 )
-def status_app_blog_text(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
+def status_app_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
     
     for row in info.to_dict(orient="records"):
         
+        url: str = row["url"]
         response = requests.get(row["url"])
-        context.log.info(f"Fetched data for {row['url']}")
+        context.log.debug(f"Fetched data for {row['url']}")
 
         html = BeautifulSoup(response.text, "html.parser")
+        html_text = str(html.find("div", class_="root-content container-blog py-6"))
 
-        row["text"] = "".join([
-            text_node.text.replace("\n", " ").strip() 
-            for text_node in HTMLNodeParser().get_nodes_from_documents([Document(text=str(html).strip())]) 
-            if text_node.metadata["tag"] == "p"
-        ])
+        chunks_metadata = {
+            **row,
+            "project": "status",
+            "source": "blog"
+        }
+        
+        document = Document(text=html_text, metadata=chunks_metadata)
 
-        file_name = row["url"].split("/")[-1] + ".pkl"
-        minio.upload(row, f"html/status/{file_name}")
+        file_name = ("_".join(url.split("/")[-2:]) + ".pkl").replace("_.", ".")
+        minio.upload(document, f"html/status/{file_name}")
 
     metadata = {
         "bucket": minio.bucket_name,
-        "uploaded": len(info)
+        "documents": len(info),
     }
     return dg.MaterializeResult(metadata=metadata)

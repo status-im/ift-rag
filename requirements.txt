@@ -6,5 +6,7 @@ pandas
 requests
 llama-index
 llama-index-embeddings-huggingface
-semantic-text-splitter
 minio
+einops
+qdrant-client
+html-to-markdown

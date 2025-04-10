@@ -15,3 +15,8 @@ URL = {
         "blog": "https://blog.nimbus.team/"
     }
 }
+
+POSTGRES_INFO = {
+    "schema": "rag_metadata",
+    "table_name": "qdrant_vectors"
+}

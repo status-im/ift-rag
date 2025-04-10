@@ -66,7 +66,7 @@ def make_blog_urls(project_name: str):
 def make_blog_text(project_name: str):
 
     @dg.asset(
-        kinds=["BeautifulSoup", "Python", "Minio"],
+        kinds=["LlamaIndex", "Python", "Minio"], # 🦙 is not allowed :/
         group_name=f"{project_name.title()}_Extraction",
         owners=["team:Nikolay"],
         description=f"Extract the HTML text of the {project_name.title()} Blog pages.",
@@ -81,30 +81,33 @@ def make_blog_text(project_name: str):
         ins={
             "info": dg.AssetIn(f"{project_name.lower()}_blog_urls")
         },
-        name=f"{project_name.lower()}_blog_text"
+        name=f"{project_name.lower()}_blogs"
     )
     def asset_template(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
         
         for row in info.to_dict(orient="records"):
             
-            response = requests.get(row["url"])
-            context.log.info(f"Fetched data for {row['url']}")
+            url: str = row["url"]
+            response = requests.get(url)
+            context.log.debug(f"Fetched data for {url}")
 
             html = BeautifulSoup(response.text, "html.parser")
-            html_text = "".join(list(map(str, html.find("section", class_="gh-content gh-canvas").children))).strip()
+            html_text = str(html.find("section", class_="gh-content gh-canvas"))
             
-            row["text"] = " ".join([
-                text_node.text.replace("\n", " ").strip()
-                for text_node in HTMLNodeParser().get_nodes_from_documents([Document(text=html_text)]) 
-                if not str(text_node.metadata["tag"]).startswith("h")
-            ])
+            chunks_metadata = {
+                **row,
+                "project": project_name.lower(), 
+                "source": "blog"
+            }
 
-            file_name = str(row["title"]).lower() + ".pkl"
-            minio.upload(row, f"html/{project_name.lower()}/{file_name}")
+            document = Document(text=html_text, metadata=chunks_metadata)
+            
+            file_name = ("_".join(url.split("/")[-2:]) + ".pkl").replace("_.", ".")
+            minio.upload(document, f"html/{project_name.lower()}/{file_name}")
 
         metadata = {
             "bucket": minio.bucket_name,
-            "uploaded": len(info)
+            "documents": len(info)
         }
         return dg.MaterializeResult(metadata=metadata)
     
