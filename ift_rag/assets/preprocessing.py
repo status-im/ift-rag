@@ -1,7 +1,9 @@
 import dagster as dg
+import pandas as pd
 import pprint
 import os
 import datetime
+import copy
 from ..configs import EmbeddingConfig, FileProcessingConfig
 from ..resources import MinioResource, Qdrant
 from llama_index.core.schema import TextNode
@@ -232,9 +234,12 @@ def qdrant_vectors(context: dg.AssetExecutionContext, info: dict, qdrant: Qdrant
     collection_name = info["qdrant_collection_name"]
     batch_size = qdrant.batch_size
 
+    output = copy.deepcopy(info)
+    output["file_paths"] = []
+
     for file_path in info["file_paths"]:
 
-        text_nodes: list[TextNode] = minio.load(file_path)        
+        text_nodes: list[TextNode] = minio.load(file_path)
         context.log.debug(f"Loaded {file_path}")
 
         points = [
@@ -247,8 +252,12 @@ def qdrant_vectors(context: dg.AssetExecutionContext, info: dict, qdrant: Qdrant
                 }
             )
             for text_node in text_nodes
+            if text_node.embedding
         ]
         context.log.debug(f"File contains {len(points)} Qdrant Points")
+        
+        if points:
+            output["file_paths"].append(file_path)
 
         storage += points
         if len(storage) < batch_size:
@@ -271,7 +280,7 @@ def qdrant_vectors(context: dg.AssetExecutionContext, info: dict, qdrant: Qdrant
     context.log.info(f"Uploaded remaining {len(storage)} vectors to {collection_name}")
     
     metadata["batches"] = str(metadata["batches"])
-    return dg.Output(info, metadata=metadata)
+    return dg.Output(output, metadata=metadata)
 
 
 
@@ -290,4 +299,4 @@ def processed_documents_files(context: dg.AssetExecutionContext, info: dict, min
     context.log.info(f"{len(info['file_paths'])} files to archive")
 
     for source_path in info['file_paths']:
-        minio.move(source_path, f"archive/{source_path}")
+        minio.move(source_path, f"archive/{source_path}")    

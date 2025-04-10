@@ -3,6 +3,8 @@ import dagster as dg
 import pandas as pd
 from pydantic import Field
 from typing import Optional
+from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB
 
 class Postgres(dg.ConfigurableResource):
 
@@ -78,3 +80,31 @@ class Postgres(dg.ConfigurableResource):
             chunks.append(pd.DataFrame(rows, columns=columns))
 
         return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(columns=columns)
+
+
+
+    def insert(self, data: pd.DataFrame, table_name: str, schema: str, json_columns: Optional[list] = None):
+        
+        engine = create_engine(self.url)
+
+        data.columns = [column.lower() for column in data.columns]
+
+        params = {
+            "name": table_name,
+            "con": engine,
+            "schema": schema,
+            "if_exists": "append",
+            "index": False
+        }
+        if json_columns:
+            params["dtype"] = {
+                json_column: JSONB
+                for json_column in json_columns
+            }
+        
+        data.to_sql(**params)
+
+
+    @property
+    def url(self) -> str:
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"

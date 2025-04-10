@@ -1,5 +1,5 @@
 from dagster import Definitions, load_assets_from_modules, load_asset_checks_from_modules, EnvVar
-from .assets import blogs, preprocessing, notion
+from .assets import blogs, preprocessing, notion, metadata
 from . import operations
 from . import jobs
 from . import schedules
@@ -8,11 +8,11 @@ from . import sensors
 from . import resources
 
 module_assets = load_assets_from_modules([
-    blogs.status, blogs.nimbus, preprocessing, notion
+    blogs.status, blogs.nimbus, preprocessing, notion, metadata
 ])
 
 module_asset_checks = load_asset_checks_from_modules([
-    # put asset check modules here
+    checks
 ])
 
 defs = Definitions(
@@ -20,6 +20,7 @@ defs = Definitions(
         *module_assets, 
         blogs.common.make_blog_urls("waku"), blogs.common.make_blog_urls("codex"), blogs.common.make_blog_urls("nomos"),
         blogs.common.make_blog_text("waku"), blogs.common.make_blog_text("codex"), blogs.common.make_blog_text("nomos"),
+        metadata.metadata_factory("blog"), metadata.metadata_factory("notion")
     ],
     jobs = [
         jobs.logos_projects_upload_job, jobs.text_embedding_job,
@@ -54,5 +55,5 @@ defs = Definitions(
             api_key=EnvVar("NOTION_SECRET_KEY")
         ),
         "qdrant": resources.Qdrant()
-    }
+    },
 )

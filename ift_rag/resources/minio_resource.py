@@ -197,3 +197,23 @@ class MinioResource(dg.ConfigurableResource):
         """
         self.copy(source, destination)
         self.client.remove_object(self.bucket_name, source)
+
+
+
+    def exists(self, file_path: str) -> bool:
+        """
+        Check if the given file exists.
+
+        Parameters:
+            - `file_path` - the Minio file location
+
+        Output:
+            - if True the file was found in Minio if False the file does not exist
+        """
+        exists = True
+        try:
+            self.client.stat_object(self.bucket_name, file_path)
+        except:
+            exists = False
+
+        return exists
