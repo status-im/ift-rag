@@ -23,7 +23,7 @@ from html_to_markdown import convert_to_markdown
     description="Convert the HTML blogs to Markdown.",
     deps=[
         "codex_blogs", "nomos_blogs", "waku_blogs",
-        "nimbus_blogs", "status_app_blogs"
+        "nimbus_blogs", "status_app_blogs", "status_network_blogs"
     ]
 )
 def blog_documents(config: FileProcessingConfig, minio: MinioResource) -> dg.MaterializeResult:

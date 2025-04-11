@@ -22,12 +22,12 @@ defs = Definitions(
         blogs.common.blog_text_factory("waku"), blogs.common.blog_text_factory("codex"), blogs.common.blog_text_factory("nomos"),
         metadata.metadata_factory("blog"), metadata.metadata_factory("notion"),
         blogs.common.uploaded_blog_metadata_factory("waku"), blogs.common.uploaded_blog_metadata_factory("codex"), blogs.common.uploaded_blog_metadata_factory("nomos"),
-        blogs.common.uploaded_blog_metadata_factory("nimbus"), blogs.common.uploaded_blog_metadata_factory("status_app"),
+        blogs.common.uploaded_blog_metadata_factory("nimbus"), blogs.common.uploaded_blog_metadata_factory("status_app"), blogs.common.uploaded_blog_metadata_factory("status_network"),
         blogs.common.filtered_urls_factory("waku"), blogs.common.filtered_urls_factory("codex"), blogs.common.filtered_urls_factory("nomos"),
-        blogs.common.filtered_urls_factory("nimbus"), blogs.common.filtered_urls_factory("status_app"),
+        blogs.common.filtered_urls_factory("nimbus"), blogs.common.filtered_urls_factory("status_app"), blogs.common.filtered_urls_factory("status_network")
     ],
     jobs = [
-        jobs.logos_projects_upload_job, jobs.text_embedding_job,
+        jobs.blog_upload_job, jobs.text_embedding_job,
         jobs.notion_json_upload_job, jobs.notion_markdown_creation_job,
         jobs.html_to_markdown_job, jobs.document_chunkation_job
     ],

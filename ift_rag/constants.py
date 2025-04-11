@@ -1,5 +1,5 @@
 URL = {
-    "status": {
+    "status_app": {
         "blog": "https://status.app/blog"
     },
     "waku": {
@@ -13,6 +13,9 @@ URL = {
     },
     "nimbus": {
         "blog": "https://blog.nimbus.team/"
+    },
+    "status_network": {
+        "blog": "https://our.status.im/tag/status-network/"
     }
 }
 

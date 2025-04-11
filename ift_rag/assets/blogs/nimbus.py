@@ -7,7 +7,6 @@ from ...resources import Selenium, MinioResource
 from ... import constants
 from bs4 import BeautifulSoup
 from llama_index.core import Document
-from llama_index.core.node_parser import HTMLNodeParser
 
 @dg.asset(
     metadata={
