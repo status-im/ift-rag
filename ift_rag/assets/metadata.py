@@ -1,6 +1,5 @@
 import dagster as dg
 import pandas as pd
-import json
 from .. import constants
 from ..configs import EmbeddingConfig
 from ..resources import MinioResource, Qdrant, Postgres
@@ -13,14 +12,15 @@ from llama_index.core.schema import TextNode
     group_name="Metadata_Upload",
     description="Create a metadata DataFrame that can be filtered and aggregated.",
     ins={
-        "info": dg.AssetIn("qdrant_vectors")
+        "info": dg.AssetIn("processed_documents_files")
     },
-    deps=["processed_documents_files"]
+    deps=["qdrant_vectors"]
 )
 def documents_metadata(context: dg.AssetExecutionContext, info: dict, minio: MinioResource) -> dg.Output:
 
     data = []
     file_paths = info.pop("file_paths")
+
     for file_path in file_paths:
         
         if not minio.exists(file_path):
@@ -43,7 +43,7 @@ def documents_metadata(context: dg.AssetExecutionContext, info: dict, minio: Min
     df = pd.DataFrame(data)
 
     metadata = {
-        "preview": dg.MarkdownMetadataValue(df.sample(10).to_markdown(index=False)),
+        "preview": dg.MarkdownMetadataValue(df.sample(min(len(df), 10)).to_markdown(index=False)),
         **df.groupby("source").count()["id"].astype(str).to_dict()
     }
     return dg.Output(df, metadata=metadata)
@@ -108,7 +108,8 @@ def blog_file_info(data: pd.DataFrame, minio: MinioResource) -> pd.DataFrame:
                 "metadata": {
                     "url": text_node.metadata["url"],
                     "project": text_node.metadata["project"],
-                    "title": text_node.metadata["title"]
+                    "title": text_node.metadata["title"],
+                    "ref_date": text_node.metadata["ref_date"]
                 }
             }
             for text_node in text_nodes
@@ -127,7 +128,7 @@ def blog_file_info(data: pd.DataFrame, minio: MinioResource) -> pd.DataFrame:
         "blog": ""
     }
 )
-def blog_metadata(context: dg.AssetExecutionContext, blog_file_info: pd.DataFrame, blog_documents_metadata: pd.DataFrame) -> pd.DataFrame:
+def blog_metadata(blog_file_info: pd.DataFrame, blog_documents_metadata: pd.DataFrame) -> pd.DataFrame:
 
     df = blog_documents_metadata.merge(blog_file_info, "left", "id")\
                                 .reset_index(drop=True)
@@ -152,13 +153,18 @@ def new_blog_metadata(context: dg.AssetExecutionContext, blog_metadata: pd.DataF
     
     query = f"""
     SELECT ID 
-    FROM {constants.POSTGRES_INFO['schema']}.{constants.POSTGRES_INFO['table_name']} 
+    FROM {constants.POSTGRES_INFO['schema']}.{constants.POSTGRES_INFO['table_name']}
     WHERE source = 'blog' 
     AND ID IN ({ids})
     """
-
-    existing = postgres.to_pandas(query)
     
+    existing = pd.DataFrame(columns=["ID"])
+
+    try:
+        existing = postgres.to_pandas(query)
+    except:
+        context.log.warning(f"Table {constants.POSTGRES_INFO['schema']}.{constants.POSTGRES_INFO['table_name']} does not exist")
+
     existing_ids = existing["ID"].to_list() if len(existing) > 0 else []
     
     query = blog_metadata["id"].isin(existing_ids)

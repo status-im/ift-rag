@@ -106,7 +106,7 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
     },
     ins={
-        "info": dg.AssetIn("status_app_blog_urls")
+        "info": dg.AssetIn("status_app_new_urls")
     }
 )
 def status_app_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
@@ -122,14 +122,14 @@ def status_app_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, mini
 
         chunks_metadata = {
             **row,
-            "project": "status",
+            "project": "status_app",
             "source": "blog"
         }
         
         document = Document(text=html_text, metadata=chunks_metadata)
 
         file_name = ("_".join(url.split("/")[-2:]) + ".pkl").replace("_.", ".")
-        minio.upload(document, f"html/status/{file_name}")
+        minio.upload(document, f"html/status/app/{file_name}")
 
     metadata = {
         "bucket": minio.bucket_name,

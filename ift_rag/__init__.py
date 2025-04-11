@@ -18,9 +18,13 @@ module_asset_checks = load_asset_checks_from_modules([
 defs = Definitions(
     assets = [
         *module_assets, 
-        blogs.common.make_blog_urls("waku"), blogs.common.make_blog_urls("codex"), blogs.common.make_blog_urls("nomos"),
-        blogs.common.make_blog_text("waku"), blogs.common.make_blog_text("codex"), blogs.common.make_blog_text("nomos"),
-        metadata.metadata_factory("blog"), metadata.metadata_factory("notion")
+        blogs.common.blog_urls_factory("waku"), blogs.common.blog_urls_factory("codex"), blogs.common.blog_urls_factory("nomos"),
+        blogs.common.blog_text_factory("waku"), blogs.common.blog_text_factory("codex"), blogs.common.blog_text_factory("nomos"),
+        metadata.metadata_factory("blog"), metadata.metadata_factory("notion"),
+        blogs.common.uploaded_blog_metadata_factory("waku"), blogs.common.uploaded_blog_metadata_factory("codex"), blogs.common.uploaded_blog_metadata_factory("nomos"),
+        blogs.common.uploaded_blog_metadata_factory("nimbus"), blogs.common.uploaded_blog_metadata_factory("status_app"),
+        blogs.common.filtered_urls_factory("waku"), blogs.common.filtered_urls_factory("codex"), blogs.common.filtered_urls_factory("nomos"),
+        blogs.common.filtered_urls_factory("nimbus"), blogs.common.filtered_urls_factory("status_app"),
     ],
     jobs = [
         jobs.logos_projects_upload_job, jobs.text_embedding_job,

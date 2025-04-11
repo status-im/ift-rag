@@ -126,7 +126,7 @@ def nimbus_blog_urls(context: dg.AssetExecutionContext, info: pd.DataFrame, sele
         "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
     },
     ins={
-        "info": dg.AssetIn("nimbus_blog_urls")
+        "info": dg.AssetIn("nimbus_new_urls")
     }
 )
 def nimbus_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.Output:

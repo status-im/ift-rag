@@ -85,6 +85,7 @@ class Postgres(dg.ConfigurableResource):
 
     def insert(self, data: pd.DataFrame, table_name: str, schema: str, json_columns: Optional[list] = None):
         
+        self.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
         engine = create_engine(self.url)
 
         data.columns = [column.lower() for column in data.columns]
