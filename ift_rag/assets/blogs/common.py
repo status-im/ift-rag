@@ -4,14 +4,94 @@ import datetime
 import requests
 import os
 from selenium.webdriver.common.by import By
-from ...resources import Selenium, MinioResource
+from ...resources import Selenium, MinioResource, Postgres
 from ... import constants
 from bs4 import BeautifulSoup
 from llama_index.core import Document
-from llama_index.core.node_parser import HTMLNodeParser
 
 
-def make_blog_urls(project_name: str):
+def uploaded_blog_metadata_factory(project_name: str):
+
+    metadata_name = project_name.title() if "_" not in project_name else project_name.split("_")[0].title()
+
+    @dg.asset(
+        metadata=constants.POSTGRES_INFO,
+        kinds=["Postgres"],
+        group_name=f"{metadata_name}_Extraction",
+        owners=["team:Nikolay"],
+        description=f"Get the {metadata_name} Blog URLs that have already been uploaded to Qdrant.",
+        tags={
+            "blog": "",
+            "portfolio": metadata_name
+        },
+        name=f"{project_name.lower()}_uploaded_metadata"
+    )
+    def asset_template(context: dg.AssetExecutionContext, postgres: Postgres) -> dg.Output:
+        
+        table_path = f"{constants.POSTGRES_INFO['schema']}.{constants.POSTGRES_INFO['table_name']}"
+        query = f"""
+        select distinct
+            metadata->>'url' as url
+        from {table_path}
+        where source = 'blog'
+        and metadata->>'project' = '{project_name}'
+        """
+
+        context.log.info(f"Executing:\n{query}")
+
+        urls = []
+        try:
+            urls = postgres.to_pandas(query)["URL"].to_list()
+        except:
+            context.log.warning(f"No URLs found for {project_name} in {table_path} or {table_path} does not exist")
+
+        metadata = {
+            "urls": len(urls),
+            "query": query
+        }
+
+        return dg.Output(urls, metadata=metadata)
+
+    return asset_template
+
+
+
+
+def filtered_urls_factory(project_name: str):
+
+    metadata_name = project_name.title() if "_" not in project_name else project_name.split("_")[0].title()
+
+    @dg.asset(
+        metadata=constants.POSTGRES_INFO,
+        kinds=["Pandas"],
+        group_name=f"{metadata_name}_Extraction",
+        owners=["team:Nikolay"],
+        description=f"Filter the {metadata_name} Blog URLs that have not been uploaded to Qdrant and Postgres.",
+        tags={
+            "blog": "",
+            "portfolio": metadata_name
+        },
+        ins={
+            "blog_info": dg.AssetIn(f"{project_name.lower()}_blog_urls"),
+            "uploaded": dg.AssetIn(f"{project_name.lower()}_uploaded_metadata")
+        },
+        name=f"{project_name.lower()}_new_urls"
+    )
+    def asset_template(blog_info: pd.DataFrame, uploaded: list) -> dg.Output:
+        
+        query = blog_info["url"].isin(uploaded)
+
+        metadata = {
+            "new": str((~query).sum()),
+            "found": str(query.sum())
+        }
+        return dg.Output(blog_info.loc[~query], metadata=metadata)
+
+    return asset_template
+
+
+
+def blog_urls_factory(project_name: str):
 
     @dg.asset(
         metadata={
@@ -63,7 +143,7 @@ def make_blog_urls(project_name: str):
 
 
 
-def make_blog_text(project_name: str):
+def blog_text_factory(project_name: str):
 
     @dg.asset(
         kinds=["LlamaIndex", "Python", "Minio"], # 🦙 is not allowed :/
@@ -79,7 +159,7 @@ def make_blog_text(project_name: str):
             "portfolio": project_name.title()
         },
         ins={
-            "info": dg.AssetIn(f"{project_name.lower()}_blog_urls")
+            "info": dg.AssetIn(f"{project_name.lower()}_new_urls")
         },
         name=f"{project_name.lower()}_blogs"
     )

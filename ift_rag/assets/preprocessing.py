@@ -23,7 +23,7 @@ from html_to_markdown import convert_to_markdown
     description="Convert the HTML blogs to Markdown.",
     deps=[
         "codex_blogs", "nomos_blogs", "waku_blogs",
-        "nimbus_blogs", "status_app_blogs"
+        "nimbus_blogs", "status_app_blogs", "status_network_blogs"
     ]
 )
 def blog_documents(config: FileProcessingConfig, minio: MinioResource) -> dg.MaterializeResult:
@@ -294,9 +294,17 @@ def qdrant_vectors(context: dg.AssetExecutionContext, info: dict, qdrant: Qdrant
     },
     deps=["qdrant_vectors"]
 )
-def processed_documents_files(context: dg.AssetExecutionContext, info: dict, minio: MinioResource) -> dg.MaterializeResult:
+def processed_documents_files(context: dg.AssetExecutionContext, info: dict, minio: MinioResource) -> dg.Output:
 
     context.log.info(f"{len(info['file_paths'])} files to archive")
 
-    for source_path in info['file_paths']:
-        minio.move(source_path, f"archive/{source_path}")    
+    file_paths = info.pop("file_paths")
+    info["file_paths"] = []
+    for source_path in file_paths:
+
+        destination_path = f"archive/{source_path}"
+        minio.move(source_path, destination_path)
+
+        info["file_paths"].append(destination_path)
+
+    return dg.Output(info)

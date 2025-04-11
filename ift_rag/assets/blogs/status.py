@@ -6,12 +6,11 @@ from selenium.webdriver.common.by import By
 from ...resources import Selenium, MinioResource
 from ... import constants
 from bs4 import BeautifulSoup
-from llama_index.core.node_parser import HTMLNodeParser
 from llama_index.core import Document
 
 @dg.asset(
     metadata={
-        "url": constants.URL["status"]["blog"]
+        "url": constants.URL["status_app"]["blog"]
     },
     kinds=["Selenium", "Python"],
     group_name="Status_Extraction",
@@ -25,7 +24,7 @@ from llama_index.core import Document
 )
 def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) -> dg.Output:
     
-    url = constants.URL["status"]["blog"]
+    url = constants.URL["status_app"]["blog"]
     selenium.driver.get(url)
     
     selenium.wait(By.CSS_SELECTOR, ".text-40.font-bold.xl\\:text-64")
@@ -106,7 +105,7 @@ def status_app_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) 
         "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
     },
     ins={
-        "info": dg.AssetIn("status_app_blog_urls")
+        "info": dg.AssetIn("status_app_new_urls")
     }
 )
 def status_app_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.MaterializeResult:
@@ -122,17 +121,119 @@ def status_app_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, mini
 
         chunks_metadata = {
             **row,
-            "project": "status",
+            "project": "status_app",
             "source": "blog"
         }
         
         document = Document(text=html_text, metadata=chunks_metadata)
 
         file_name = ("_".join(url.split("/")[-2:]) + ".pkl").replace("_.", ".")
-        minio.upload(document, f"html/status/{file_name}")
+        minio.upload(document, f"html/status/app/{file_name}")
 
     metadata = {
         "bucket": minio.bucket_name,
         "documents": len(info),
+    }
+    return dg.MaterializeResult(metadata=metadata)
+
+
+
+@dg.asset(
+    metadata={
+        "url": constants.URL["status_network"]["blog"]
+    },
+    kinds=["Selenium", "Python"],
+    group_name="Status_Extraction",
+    owners=["team:Nikolay"],
+    description="Extract the Status Network Blog URLs.",
+    tags={
+        "blog": "",
+        "scrape": "",
+        "portfolio": "Status"
+    }
+)
+def status_network_blog_urls(context: dg.AssetExecutionContext, selenium: Selenium) -> dg.Output:
+    
+    url = constants.URL["status_network"]["blog"]
+    selenium.driver.get(url)
+
+    selenium.wait(By.TAG_NAME, "h1")
+    context.log.info(f"Loaded {url}")
+
+    button = selenium.driver.find_element(By.ID, "load-posts")
+
+    while button.text != button.get_attribute("data-end"):
+        
+        button.click()
+        context.log.info("Pressed button")
+        context.log.debug(f"Current text: {button.text}")
+
+        button = selenium.driver.find_element(By.ID, "load-posts")
+
+
+    posts = pd.DataFrame([
+        {
+            "tag": article.find_element(By.CLASS_NAME, "tags").text,
+            "title": article.find_element(By.CLASS_NAME, "post-title").text,
+            "url": article.find_element(By.CLASS_NAME, "post-title").find_element(By.TAG_NAME, "a").get_attribute("href"),
+            "author": article.find_element(By.TAG_NAME, "li").find_element(By.TAG_NAME, "a").get_attribute("data-original-title"),
+            "ref_date": datetime.datetime.strptime(article.find_element(By.TAG_NAME, "time").get_attribute("datetime"), "%Y-%m-%d"),
+        }
+        for article in selenium.driver.find_elements(By.TAG_NAME, "article")
+    ])
+
+    metadata = {
+        "blogs": len(posts),
+        "start_date": posts["ref_date"].min().strftime("%Y-%m-%d"),
+        "end_date": posts["ref_date"].max().strftime("%Y-%m-%d"),
+        "preview": dg.MarkdownMetadataValue(posts.head().to_markdown(index=False))
+    }
+
+    return dg.Output(posts, metadata=metadata)
+
+
+
+@dg.asset(
+    kinds=["LlamaIndex", "Python", "Minio"], # 🦙 is not allowed :/
+    group_name="Status_Extraction",
+    owners=["team:Nikolay"],
+    description="Extract the Status Network Blogs.",
+    tags={
+        "blog": "",
+        "scrape": "",
+        "portfolio": "Status"
+    },
+    metadata={
+        "🦙Index": "https://docs.llamaindex.ai/en/stable/module_guides/loading/documents_and_nodes/",
+    },
+    ins={
+        "info": dg.AssetIn("status_network_new_urls")
+    }
+)
+def status_network_blogs(context: dg.AssetExecutionContext, info: pd.DataFrame, minio: MinioResource) -> dg.Output:
+
+    for row in info.to_dict(orient="records"):
+            
+        url: str = row["url"]
+        response = requests.get(url)
+        context.log.debug(f"Fetched data for {url}")
+
+        html = BeautifulSoup(response.text, "html.parser")
+        html_text = str(html.find("div", class_="col-xl-8 col-lg-9 col-md-12 ml-auto mr-auto"))
+        
+        chunks_metadata = {
+            **row,
+            "project": "status_network",
+            "source": "blog"
+        }
+
+        document = Document(text=html_text, metadata=chunks_metadata)
+        
+        file_name = ("_".join(url.split("/")[-2:]) + ".pkl").replace("_.", ".")
+        minio.upload(document, f"html/status/network/{file_name}")
+
+    metadata = {
+        "bucket": minio.bucket_name,
+        "documents": len(info)
     }
     return dg.MaterializeResult(metadata=metadata)
