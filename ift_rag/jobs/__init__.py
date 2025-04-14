@@ -1,4 +1,5 @@
-from dagster import define_asset_job, AssetSelection
+from dagster import define_asset_job, AssetSelection, RunConfig, EnvVar
+from ..configs import NotionBlocksConfig
 
 blog_upload_job = define_asset_job(
     name="blog_upload_job",
@@ -20,9 +21,14 @@ document_chunkation_job = define_asset_job(
     selection=AssetSelection.assets("document_chunks")
 )
 
-notion_json_upload_job = define_asset_job(
-    name="notion_json_upload_job",
-    selection= AssetSelection.groups("Notion_Extraction") - AssetSelection.assets("notion_markdown_documents", "blog_documents")
+notion_json_download_job = define_asset_job(
+    name="notion_json_download_job",
+    selection= AssetSelection.assets("notion_page_ids", "notion_page_data"),
+    config=RunConfig(ops={
+        "notion_page_data": NotionBlocksConfig(
+            local_path=EnvVar("NOTION_JSON_PATH")
+        )
+    })
 )
 
 notion_markdown_creation_job = define_asset_job(

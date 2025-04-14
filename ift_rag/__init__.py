@@ -28,14 +28,14 @@ defs = Definitions(
     ],
     jobs = [
         jobs.blog_upload_job, jobs.text_embedding_job,
-        jobs.notion_json_upload_job, jobs.notion_markdown_creation_job,
+        jobs.notion_json_download_job, jobs.notion_markdown_creation_job,
         jobs.html_to_markdown_job, jobs.document_chunkation_job
     ],
     sensors = [
-        sensors.minio_file_sensor_factory("text_embeddings_sensor", "documents/chunks", "document_embeddings", jobs.text_embedding_job),
-        sensors.minio_file_sensor_factory("html_to_markdown_sensor", "html", "blog_documents", jobs.html_to_markdown_job),
-        sensors.minio_file_sensor_factory("document_chunks_sensor", "documents/markdown", "document_chunks", jobs.document_chunkation_job),
-        sensors.minio_file_sensor_factory("notion_markdown_sensor", "notion/json", "notion_markdown_documents", jobs.notion_markdown_creation_job),
+        sensors.minio_file_sensor_factory("text_embeddings_sensor", "document_embeddings", jobs.text_embedding_job, minio_path_prefix="documents/chunks"),
+        sensors.minio_file_sensor_factory("html_to_markdown_sensor", "blog_documents", jobs.html_to_markdown_job, minio_path_prefix="html"),
+        sensors.minio_file_sensor_factory("document_chunks_sensor", "document_chunks", jobs.document_chunkation_job, minio_path_prefix="documents/markdown"),
+        sensors.minio_file_sensor_factory("notion_markdown_sensor", "notion_markdown_documents", jobs.notion_markdown_creation_job, folder_path=EnvVar("NOTION_JSON_PATH").get_value())
     ],
     schedules = [
         # Insert schedules here. Example schedules.your_schedule_name

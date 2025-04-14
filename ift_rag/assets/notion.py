@@ -3,9 +3,10 @@ from ..resources import Notion, MinioResource
 from ..configs import NotionBlocksConfig
 from ..utils import notion_parser
 from llama_index.core import Document
-from llama_index.core.llms import MockLLM
-from llama_index.core.node_parser import MarkdownElementNodeParser
 import pandas as pd
+import traceback
+import time
+import json
 import os
 
 @dg.asset(
@@ -24,7 +25,10 @@ def notion_page_ids(context: dg.AssetExecutionContext, notion: Notion) -> dg.Out
     page_info = pd.DataFrame([
         {
             "id": page["id"],
-            "title": "".join([chunk["plain_text"] for chunk in page["properties"]["title"]["title"]]),
+            "title": "".join([
+                chunk["plain_text"] 
+                for chunk in page["properties"].get("title", page["properties"].get("Name", {"title": []}))["title"]
+            ]),
             "created_time": page["created_time"],
             "last_edited_time": page["last_edited_time"],
             "url": page["url"],
@@ -40,7 +44,7 @@ def notion_page_ids(context: dg.AssetExecutionContext, notion: Notion) -> dg.Out
     )
 
     metadata = {
-        "preview": dg.MarkdownMetadataValue(page_info.head(10).to_markdown(index=False)),
+        "preview": dg.MarkdownMetadataValue(page_info.sample(10).to_markdown(index=False)),
         "pages": len(page_info)
     }
 
@@ -52,7 +56,7 @@ def notion_page_ids(context: dg.AssetExecutionContext, notion: Notion) -> dg.Out
     kinds=["Notion"],
     owners=["team:Nikolay"],
     group_name="Notion_Extraction",
-    description="Get the Notion page data.",
+    description="Get the Notion page data and upload it locally.",
     ins={
         "page_ids": dg.AssetIn("notion_page_ids")
     },
@@ -60,36 +64,39 @@ def notion_page_ids(context: dg.AssetExecutionContext, notion: Notion) -> dg.Out
         "notion": ""
     }
 )
-def notion_page_data(page_ids: pd.DataFrame, notion: Notion) -> dg.Output:
-
-    page_data = {
-        id: notion.get_all_blocks(id)
-        for id in page_ids["id"].to_list()
-    }
+def notion_page_data(context: dg.AssetExecutionContext, page_ids: pd.DataFrame, config: NotionBlocksConfig, notion: Notion) -> dg.MaterializeResult:
+    
+    os.makedirs(config.local_path, exist_ok=True)
 
     metadata = {
-        page["title"]: f"{len(page_data[page['id']])} block(s)" 
-        for page in page_ids.to_dict("records")
+        "downloads": 0,
+        "failed": 0,
     }
 
-    return dg.Output(page_data, metadata=metadata)
+    downloaded_ids = pd.Series(os.listdir(config.local_path)).str.replace(".json", "").to_list()
 
+    query = ~page_ids["id"].isin(downloaded_ids)
+    ids = page_ids.loc[query, "id"].to_list()
+    context.log.info(f"To do: {len(ids)} IDs")
 
+    for index, id in enumerate(ids):
+        try:
+            data = notion.get_all_blocks(id)
+            context.log.info(f"{index}) Extracted data for {id}")
 
-@dg.asset(
-    kinds=["Minio"],
-    owners=["team:Nikolay"],
-    group_name="Notion_Extraction",
-    description="Upload the Notion JSON data to Minio.",
-    tags={
-        "notion": ""
-    }
-)
-def notion_page_json(context: dg.AssetExecutionContext, notion_page_data: dict[str, list[dict]], minio: MinioResource) -> dg.MaterializeResult:
+            file_path = os.path.join(config.local_path, f"{id}.json")
+            with open(file_path, "w") as file:
+                json.dump(data, file, indent=4)
 
-    for page_id, page_data in notion_page_data.items():
-        file_path = f"notion/json/{page_id}.json"        
-        minio.upload(page_data, file_path)
+            context.log.info(f"Created {file_path}")
+            metadata["downloads"] += 1
+        except Exception as e:
+            context.log.warning(f"There was an error with page Notion page ID - {id}\n\n{traceback.format_exc()}")
+            metadata["failed"] += 1
+    
+        time.sleep(1)
+
+    return dg.MaterializeResult(metadata=metadata)
 
 
 
@@ -98,9 +105,10 @@ def notion_page_json(context: dg.AssetExecutionContext, notion_page_data: dict[s
     owners=["team:Nikolay"],
     group_name="Notion_Extraction",
     description="Convert the Notion page text to Markdown and split it into chunks (🦙 Documents) that will be stored in the vector store",
-    deps=["notion_page_json"],
+    deps=["notion_page_data"],
     metadata={
-        "minio_folder": "documents/markdown/notion/",
+        "json": NotionBlocksConfig().archive_json_path,
+        "markdown": NotionBlocksConfig().minio_markdown_path,
         "🦙Index": "https://github.com/run-llama/llama_index/discussions/13412"
     },
     tags={
@@ -109,7 +117,7 @@ def notion_page_json(context: dg.AssetExecutionContext, notion_page_data: dict[s
 )
 def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionBlocksConfig, minio: MinioResource) -> dg.MaterializeResult:
     
-    minio_folder = "documents/markdown/notion/"
+    add_slash = lambda path: str(path) if str(path).endswith("/") else str(path) + "/"
 
     for file_path in config.file_paths:
         
@@ -117,8 +125,10 @@ def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionB
         page_id = ".".join(file_name.split(".")[:-1]).replace("_", "-")
 
         markdown = []
-        data: list[dict] = minio.load(file_path)
-
+        
+        with open(file_path, "r") as file:
+            data: list[dict] = json.load(file)
+        
         for index, document in enumerate(data):
 
             if document["type"] in config.skip_block_types:
@@ -130,7 +140,7 @@ def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionB
             if len(block.children) != 0 and not isinstance(block, notion_parser.Table):
                 markdown.append(notion_parser.get_child_markdown(block, ""))
 
-        archive_path = "archive/" + file_path
+        archive_path = add_slash(config.archive_json_path) + file_name
         params = {
             "text": "".join(markdown),
             "metadata": {
@@ -141,9 +151,15 @@ def notion_markdown_documents(context: dg.AssetExecutionContext, config: NotionB
         }
 
         document = Document(**params)
-        minio.upload(document, f"{minio_folder}{page_id}.pkl")
-        minio.move(file_path, archive_path)
-        context.log.info(f"Moved file {os.path.basename(file_path)} from {os.path.dirname(file_path)} to {os.path.dirname(archive_path)}")
+
+        path = add_slash(config.minio_markdown_path) + f"{page_id}.pkl"
+        minio.upload(document, path)
+        context.log.info(f"Uploaded {page_id} Markdown to {path}")
+
+        minio.upload(data, archive_path)
+        os.remove(file_path)
+        context.log.info(f"Archived file {page_id} - {archive_path}")
+        
 
     metadata = {
         "bucket": minio.bucket_name,
