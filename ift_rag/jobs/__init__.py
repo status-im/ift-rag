@@ -3,7 +3,7 @@ from ..configs import NotionBlocksConfig
 
 blog_upload_job = define_asset_job(
     name="blog_upload_job",
-    selection=AssetSelection.groups("Codex_Extraction", "Nomos_Extraction", "Waku_Extraction", "Nimbus_Extraction", "Status_Extractio")
+    selection=AssetSelection.groups("Codex_Extraction", "Nomos_Extraction", "Waku_Extraction", "Nimbus_Extraction", "Status_Extractio", "Status_Extraction")
 )
 
 text_embedding_job = define_asset_job(

@@ -6,7 +6,7 @@ from ..resources import MinioResource
 
 
 
-def minio_file_sensor_factory(sensor_name: str, asset_name: str, job: dg.JobDefinition, minimum_interval_seconds: int = 30, auto_run: bool = False, folder_path: Optional[str] = None, minio_path_prefix: Optional[str] = None):
+def minio_file_sensor_factory(sensor_name: str, asset_name: str, job: dg.JobDefinition, minimum_interval_seconds: int = 30, auto_run: bool = False, folder_path: Optional[str] = None, minio_path_prefix: Optional[str] = None, **config_kwargs):
 
     @dg.sensor(
         job=job,
@@ -35,7 +35,8 @@ def minio_file_sensor_factory(sensor_name: str, asset_name: str, job: dg.JobDefi
                 "ops": {
                     asset_name: {
                         "config": {
-                            "file_paths": file_paths
+                            "file_paths": file_paths,
+                            **config_kwargs
                         }
                     }
                 }
