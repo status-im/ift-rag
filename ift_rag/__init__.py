@@ -1,5 +1,5 @@
 from dagster import Definitions, load_assets_from_modules, load_asset_checks_from_modules, EnvVar
-from .assets import blogs, preprocessing, notion, metadata
+from .assets import blogs, preprocessing, notion, metadata, github_markdowns
 from . import operations
 from . import jobs
 from . import schedules
@@ -24,7 +24,8 @@ defs = Definitions(
         blogs.common.uploaded_blog_metadata_factory("waku"), blogs.common.uploaded_blog_metadata_factory("codex"), blogs.common.uploaded_blog_metadata_factory("nomos"),
         blogs.common.uploaded_blog_metadata_factory("nimbus"), blogs.common.uploaded_blog_metadata_factory("status_app"), blogs.common.uploaded_blog_metadata_factory("status_network"),
         blogs.common.filtered_urls_factory("waku"), blogs.common.filtered_urls_factory("codex"), blogs.common.filtered_urls_factory("nomos"),
-        blogs.common.filtered_urls_factory("nimbus"), blogs.common.filtered_urls_factory("status_app"), blogs.common.filtered_urls_factory("status_network")
+        blogs.common.filtered_urls_factory("nimbus"), blogs.common.filtered_urls_factory("status_app"), blogs.common.filtered_urls_factory("status_network"),
+        github_markdowns.github_markdown_factory("contributors.free.technology", "develop", ".md"), github_markdowns.github_markdown_factory("infra-docs", "master", ".md")
     ],
     jobs = [
         jobs.blog_upload_job, jobs.text_embedding_job,
@@ -32,10 +33,10 @@ defs = Definitions(
         jobs.html_to_markdown_job, jobs.document_chunkation_job
     ],
     sensors = [
-        sensors.minio_file_sensor_factory("text_embeddings_sensor", "documents/chunks", "document_embeddings", jobs.text_embedding_job),
-        sensors.minio_file_sensor_factory("html_to_markdown_sensor", "html", "blog_documents", jobs.html_to_markdown_job),
-        sensors.minio_file_sensor_factory("document_chunks_sensor", "documents/markdown", "document_chunks", jobs.document_chunkation_job),
-        sensors.minio_file_sensor_factory("notion_markdown_sensor", "notion/json", "notion_markdown_documents", jobs.notion_markdown_creation_job),
+        sensors.minio_file_sensor_factory("text_embeddings_sensor", "document_embeddings", jobs.text_embedding_job, minio_path_prefix="documents/chunks"),
+        sensors.minio_file_sensor_factory("html_to_markdown_sensor", "blog_documents", jobs.html_to_markdown_job, minio_path_prefix="html"),
+        sensors.minio_file_sensor_factory("document_chunks_sensor", "document_chunks", jobs.document_chunkation_job, minio_path_prefix="documents/markdown"),
+        sensors.minio_file_sensor_factory("notion_markdown_sensor", "notion_markdown_documents", jobs.notion_markdown_creation_job, folder_path=EnvVar("NOTION_JSON_PATH").get_value(), debug=True)
     ],
     schedules = [
         # Insert schedules here. Example schedules.your_schedule_name
@@ -58,6 +59,7 @@ defs = Definitions(
         "notion": resources.Notion(
             api_key=EnvVar("NOTION_SECRET_KEY")
         ),
-        "qdrant": resources.Qdrant()
+        "qdrant": resources.Qdrant(),
+        "github": resources.GithubResource(token=EnvVar("GITHUB_TOKEN"))
     },
 )

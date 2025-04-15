@@ -10,3 +10,4 @@ minio
 einops
 qdrant-client
 html-to-markdown
+PyGithub
