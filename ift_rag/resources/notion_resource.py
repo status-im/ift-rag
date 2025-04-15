@@ -35,6 +35,7 @@ class Notion(dg.ConfigurableResource):
         return response.get("results", [])
 
 
+
     def get_all_blocks(self, block_id: str) -> list[dict]:
         """
         Recursively retrieve all blocks (and nested child blocks) for a given block_id.

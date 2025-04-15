@@ -2,6 +2,7 @@ import dagster as dg
 import pandas as pd
 import datetime
 import requests
+import time
 from selenium.webdriver.common.by import By
 from ...resources import Selenium, MinioResource
 from ... import constants
