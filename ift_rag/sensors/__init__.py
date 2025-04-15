@@ -1,11 +1,12 @@
 import dagster as dg
 import datetime
-from .. import jobs
+import os
+from typing import Optional
 from ..resources import MinioResource
 
 
 
-def minio_file_sensor_factory(sensor_name: str, minio_path_prefix: str, asset_name: str, job: dg.JobDefinition, minimum_interval_seconds: int = 30, auto_run: bool = False):
+def minio_file_sensor_factory(sensor_name: str, asset_name: str, job: dg.JobDefinition, minimum_interval_seconds: int = 30, auto_run: bool = False, folder_path: Optional[str] = None, minio_path_prefix: Optional[str] = None, **config_kwargs):
 
     @dg.sensor(
         job=job,
@@ -15,7 +16,18 @@ def minio_file_sensor_factory(sensor_name: str, minio_path_prefix: str, asset_na
     )
     def sensor_template(minio: MinioResource):
 
-        file_paths = [minio_object.object_name for minio_object in minio.client.list_objects(minio.bucket_name, recursive=True, prefix=minio_path_prefix)]
+        file_paths = []
+
+        if minio_path_prefix:
+            file_paths = [
+                minio_object.object_name 
+                for minio_object in minio.client.list_objects(minio.bucket_name, recursive=True, prefix=minio_path_prefix)
+            ]
+        elif folder_path:
+            file_paths = [
+                os.path.join(folder_path, file_name)
+                for file_name in os.listdir(folder_path)
+            ]
 
         params = {
             "run_key": str(int(datetime.datetime.now().timestamp())),
@@ -23,7 +35,8 @@ def minio_file_sensor_factory(sensor_name: str, minio_path_prefix: str, asset_na
                 "ops": {
                     asset_name: {
                         "config": {
-                            "file_paths": file_paths
+                            "file_paths": file_paths,
+                            **config_kwargs
                         }
                     }
                 }

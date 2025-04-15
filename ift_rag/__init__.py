@@ -29,7 +29,7 @@ defs = Definitions(
     ],
     jobs = [
         jobs.blog_upload_job, jobs.text_embedding_job,
-        jobs.notion_json_upload_job, jobs.notion_markdown_creation_job,
+        jobs.notion_json_download_job, jobs.notion_markdown_creation_job,
         jobs.html_to_markdown_job, jobs.document_chunkation_job
     ],
     sensors = [

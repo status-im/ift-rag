@@ -6,6 +6,7 @@ import json
 import platform
 import pickle
 import datetime
+import random
 from minio import Minio
 from minio.commonconfig import CopySource
 from typing import Optional, Any
@@ -106,10 +107,11 @@ class MinioResource(dg.ConfigurableResource):
 
         processed_file_name = re.sub(r'_+', '_', processed_file_name)
         file_path = file_path.replace(file_name, processed_file_name)
-                
+        
+        
         local_file_path = os.path.join(
             os.path.dirname(__file__), 
-            str(datetime.datetime.now().timestamp()).replace(".", ""), 
+            f"{str(datetime.datetime.now().timestamp()).replace('.', '')}-{random.randrange(0, int(datetime.datetime.now().timestamp()))}",
             processed_file_name
         )
         if not local_file_path.endswith(file_extension):
