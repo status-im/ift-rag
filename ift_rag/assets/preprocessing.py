@@ -53,7 +53,10 @@ def blog_documents(config: FileProcessingConfig, minio: MinioResource) -> dg.Mat
     owners=["team:Nikolay"],
     group_name="Data_Retreiver",
     description="Convert the Markdown 🦙 Documents into chunks.",
-    deps=["blog_documents", "notion_markdown_documents"]
+    deps=[
+        "blog_documents", "notion_markdown_documents",
+        "contributors_free_technology_markdown_documents", "infra_docs_markdown_documents"
+    ]
 )
 def document_chunks(context: dg.AssetExecutionContext, config: FileProcessingConfig, minio: MinioResource) -> dg.MaterializeResult:
     
