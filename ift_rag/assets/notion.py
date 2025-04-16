@@ -2,8 +2,11 @@ import dagster as dg
 from ..resources import Notion, MinioResource
 from ..configs import NotionBlocksConfig
 from ..utils import notion_parser
+from .. import constants
 from llama_index.core import Document
 import pandas as pd
+import numpy as np
+import time
 import traceback
 import json
 import os
@@ -43,21 +46,20 @@ def notion_page_ids(context: dg.AssetExecutionContext, notion: Notion) -> dg.Out
         created_time = pd.to_datetime(page_info["created_time"], format=format),
         last_edited_time = pd.to_datetime(page_info["last_edited_time"], format=format),
     )
-
+    
     metadata = {
-        "preview": dg.MarkdownMetadataValue(page_info.sample(10).to_markdown(index=False)),
+        "preview": dg.MarkdownMetadataValue(page_info.head(min(len(page_info), 10)).to_markdown(index=False)),
         "pages": len(page_info)
     }
 
     return dg.Output(page_info, metadata=metadata)
 
 
-
 @dg.asset(
-    kinds=["Notion"],
+    kinds=["Pandas"],
     owners=["team:Nikolay"],
     group_name="Notion_Extraction",
-    description="Get the Notion page data and upload it locally.",
+    description=f"Split the pages into {constants.NOTION_PAGE_DOWNLOADERS} chunks so REST API requests can be done in parallel.",
     ins={
         "page_ids": dg.AssetIn("notion_page_ids")
     },
@@ -65,48 +67,84 @@ def notion_page_ids(context: dg.AssetExecutionContext, notion: Notion) -> dg.Out
         "notion": ""
     }
 )
-def notion_page_data(context: dg.AssetExecutionContext, page_ids: pd.DataFrame, config: NotionBlocksConfig, notion: Notion) -> dg.MaterializeResult:
-    
+def notion_page_requests(context: dg.AssetExecutionContext, page_ids: pd.DataFrame, config: NotionBlocksConfig) -> dg.Output:
+
     os.makedirs(config.local_path, exist_ok=True)
 
+    downloaded_ids = pd.Series(os.listdir(config.local_path)).str.replace(".json", "").to_list()
+    query = ~page_ids["id"].isin(downloaded_ids)
+    pages = page_ids.loc[query].assign(file_path=None).reset_index(drop=True).copy()
+
+    if len(pages) > 0:
+        pages["file_path"] = pages["id"].apply(lambda id: os.path.join(config.local_path, f"{id}.json"))
+
+    chunks = np.array_split(pages, constants.NOTION_PAGE_DOWNLOADERS)
+    
     metadata = {
-        "downloads": 0,
-        "failed": 0,
+        "total": str(len(page_ids)),
+        "uploaded": str((~query).sum()),
+        "to_do": str(len(pages)),
+        "chunks": str(len(chunks)),
     }
 
-    downloaded_ids = pd.Series(os.listdir(config.local_path)).str.replace(".json", "").to_list()
+    return dg.Output(chunks, metadata=metadata)
 
-    query = ~page_ids["id"].isin(downloaded_ids)
-    pages = page_ids.loc[query].reset_index(drop=True).copy().to_dict("records")
 
-    context.log.info(f"To do: {len(pages)} IDs")
 
-    for index, page in enumerate(pages):
-
-        page = {
-            key: value if "time" not in key else str(value)
-            for key, value in page.items()
+def notion_page_data_factory(number: int):
+    @dg.asset(
+        kinds=["Notion"],
+        owners=["team:Nikolay"],
+        group_name="Notion_Extraction",
+        description="Get the Notion page data and upload it locally.",
+        ins={
+            "chunks": dg.AssetIn("notion_page_requests")
+        },
+        tags={
+            "notion": ""
+        },
+        name=f"notion_page_json_{number}"
+    )
+    def asset_template(context: dg.AssetExecutionContext, chunks: list[pd.DataFrame], notion: Notion) -> dg.MaterializeResult:
+        
+        metadata = {
+            "downloads": 0,
+            "failed": 0,
         }
-        try:
-            data = notion.get_all_blocks(page['id'])
-            context.log.info(f"{index}) Extracted data for {page['id']}")
 
-            file_path = os.path.join(config.local_path, f"{page['id']}.json")
+        pages = chunks[number-1].to_dict("records")
+        context.log.info(f"To do: {len(pages)} IDs")
+
+        for index, page in enumerate(pages):
             
-            json_data = {
-                "metadata": page,
-                "data": data
-            }
-            with open(file_path, "w") as file:
-                json.dump(json_data, file, indent=4)
+            file_path = page.pop("file_path")
 
-            context.log.info(f"Created {file_path}")
-            metadata["downloads"] += 1
-        except Exception as e:
-            context.log.warning(f"There was an error with page Notion page ID - {id}\n\n{traceback.format_exc()}")
-            metadata["failed"] += 1
+            page = {
+                key: value if "time" not in key else str(value)
+                for key, value in page.items()
+            }
+            try:
+                data = notion.get_all_blocks(page['id'])
+                context.log.info(f"{index}) Extracted data for {page['id']}")
+                
+                json_data = {
+                    "metadata": page,
+                    "data": data
+                }
+                with open(file_path, "w") as file:
+                    json.dump(json_data, file, indent=4)
+
+                context.log.info(f"Created {file_path}")
+                metadata["downloads"] += 1
+            except Exception as e:
+                context.log.warning(f"There was an error with page Notion page ID - {id}\n\n{traceback.format_exc()}")
+                metadata["failed"] += 1
+            
+            time.sleep(0.5)
+
+        return dg.MaterializeResult(metadata=metadata)
     
-    return dg.MaterializeResult(metadata=metadata)
+    return asset_template
 
 
 
@@ -115,7 +153,7 @@ def notion_page_data(context: dg.AssetExecutionContext, page_ids: pd.DataFrame, 
     owners=["team:Nikolay"],
     group_name="Notion_Extraction",
     description="Convert the Notion page text to Markdown and split it into chunks (🦙 Documents) that will be stored in the vector store",
-    deps=["notion_page_data"],
+    deps=[f"notion_page_json_{number}" for number in range(1, constants.NOTION_PAGE_DOWNLOADERS+1)],
     metadata={
         "json": NotionBlocksConfig().archive_json_path,
         "markdown": NotionBlocksConfig().minio_markdown_path,

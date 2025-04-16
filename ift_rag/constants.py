@@ -23,3 +23,7 @@ POSTGRES_INFO = {
     "schema": "rag_metadata",
     "table_name": "qdrant_vectors"
 }
+
+# The rate limit for incoming requests per integration is an average of three requests per second
+# https://developers.notion.com/reference/request-limits
+NOTION_PAGE_DOWNLOADERS = 3 

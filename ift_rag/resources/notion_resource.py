@@ -28,11 +28,16 @@ class Notion(dg.ConfigurableResource):
             - the raw page data
         """
         response: dict = self.client.search(
-            query="",
             filter={"property": "object", "value": "page"}
         )
-        
-        return response.get("results", [])
+        pages = []
+        while response.get("has_more"):
+
+            pages += response.get("results", [])
+            response = self.client.search(start_cursor=response["next_cursor"])
+
+
+        return pages
 
 
 

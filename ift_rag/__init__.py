@@ -6,6 +6,7 @@ from . import schedules
 from . import checks
 from . import sensors
 from . import resources
+from . import constants
 
 module_assets = load_assets_from_modules([
     blogs.status, blogs.nimbus, preprocessing, notion, metadata
@@ -25,7 +26,8 @@ defs = Definitions(
         blogs.common.uploaded_blog_metadata_factory("nimbus"), blogs.common.uploaded_blog_metadata_factory("status_app"), blogs.common.uploaded_blog_metadata_factory("status_network"),
         blogs.common.filtered_urls_factory("waku"), blogs.common.filtered_urls_factory("codex"), blogs.common.filtered_urls_factory("nomos"),
         blogs.common.filtered_urls_factory("nimbus"), blogs.common.filtered_urls_factory("status_app"), blogs.common.filtered_urls_factory("status_network"),
-        github_markdowns.github_markdown_factory("contributors.free.technology", "develop", ".md"), github_markdowns.github_markdown_factory("infra-docs", "master", ".md")
+        github_markdowns.github_markdown_factory("contributors.free.technology", "develop", ".md"), github_markdowns.github_markdown_factory("infra-docs", "master", ".md"),
+        *[notion.notion_page_data_factory(number) for number in range(1, constants.NOTION_PAGE_DOWNLOADERS+1)]
     ],
     jobs = [
         jobs.blog_upload_job, jobs.text_embedding_job,

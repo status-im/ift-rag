@@ -20,7 +20,7 @@ class Block:
         self.rich_text: list[dict] = document[self.type].get("rich_text", [])
         
         self.markdown_text = "".join([
-            self.set_annotations(rich_text["plain_text"], rich_text["annotations"], rich_text["href"])
+            self.set_annotations(rich_text["plain_text"], rich_text["annotations"], rich_text["href"], rich_text["type"])
             for rich_text in self.rich_text
         ]) + "\n"
         
@@ -28,7 +28,7 @@ class Block:
 
         
     @staticmethod
-    def set_annotations(plain_text: str, annotations: dict[str, Union[str, bool]], href: Optional[str] = None) -> str:
+    def set_annotations(plain_text: str, annotations: dict[str, Union[str, bool]], href: Optional[str] = None, text_type: Optional[str] = None) -> str:
         """
         Create the annotations for a single text chunk
 
@@ -43,9 +43,13 @@ class Block:
         markdown_text = plain_text
 
         is_href =  isinstance(href, str) and len(href) > 0
+        is_equation = isinstance(text_type, str) and text_type == "equation"
 
         if is_href:
             markdown_text = f"[{markdown_text.strip()}]({href})"
+
+        if is_equation:
+            markdown_text = f"${markdown_text}$"
 
         if annotations["bold"]:
             markdown_text = f"**{markdown_text.strip()}**"
@@ -98,7 +102,7 @@ class Table(Block):
         records = [
             [
                 "".join([
-                    self.set_annotations(cell_value["plain_text"], cell_value["annotations"], cell_value["href"]) 
+                    self.set_annotations(cell_value["plain_text"], cell_value["annotations"], cell_value["href"], self.type)
                     for cell_value in cell
                 ])
                 for cell in child["table_row"]["cells"]
@@ -107,6 +111,7 @@ class Table(Block):
         ]
 
         return "\n" + pd.DataFrame.from_records(records[1:], columns=records[0]).to_markdown(index=False) + "\n"
+
 
 
 class Code(Block):
@@ -121,6 +126,7 @@ class Code(Block):
         ]) + "\n```\n"
 
 
+
 class Quote(Block):
 
     def __init__(self, document: dict, indents: int = 0):
@@ -128,11 +134,20 @@ class Quote(Block):
         self.markdown_text = f"{self.indents}> {self.markdown_text}"
 
 
+
 class Divider(Block):
 
     def __init__(self, document: dict, indents: int = 0):
         super().__init__(document, indents)
         self.markdown_text = "---\n"
+
+
+
+class Equation(Block):
+
+    def __init__(self, document: dict, indents: int = 0):
+        super().__init__(document, indents)
+        self.markdown_text = f"$$\n{document['equation']['expression']}\n$$"
 
 # ============================================================================================================================================================
 # ============================================================================================================================================================
@@ -167,6 +182,9 @@ def get_notion_block(document: dict, text_type: str, indents: int = 0) -> Union[
     
     if text_type == "divider":
         return Divider(document, indents)
+    
+    if text_type == "equation":
+        return Equation(document, indents)
 
     return Block(document, indents)
 

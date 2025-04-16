@@ -1,5 +1,6 @@
 from dagster import define_asset_job, AssetSelection, RunConfig, EnvVar
 from ..configs import NotionBlocksConfig
+from .. import constants
 
 blog_upload_job = define_asset_job(
     name="blog_upload_job",
@@ -23,9 +24,9 @@ document_chunkation_job = define_asset_job(
 
 notion_json_download_job = define_asset_job(
     name="notion_json_download_job",
-    selection= AssetSelection.assets("notion_page_ids", "notion_page_data"),
+    selection= AssetSelection.assets("notion_page_ids", "notion_page_requests", *[f"notion_page_json_{number}" for number in range(1, constants.NOTION_PAGE_DOWNLOADERS+1)]),
     config=RunConfig(ops={
-        "notion_page_data": NotionBlocksConfig(
+        "notion_page_requests": NotionBlocksConfig(
             local_path=EnvVar("NOTION_JSON_PATH")
         )
     })
