@@ -5,7 +5,7 @@ from pydantic import Field
 
 class GithubResource(dg.ConfigurableResource):
 
-    token: str
+    token: str = Field(description="A GitHub classic token")
     organization: str = Field(description="The GitHub organization / username", default="status-im")
     __client: Optional[Github] = None
 
